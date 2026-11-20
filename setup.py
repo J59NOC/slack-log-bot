@@ -225,7 +225,7 @@ def check_slack(env: dict[str, str]) -> dict[str, str]:
         warn_if_truncated(env["SLACK_APP_TOKEN"], 64)
 
     try:
-        WebClient(token=env["SLACK_APP_TOKEN"]).apps_connections_open()
+        WebClient().apps_connections_open(app_token=env["SLACK_APP_TOKEN"])
         ok("Socket Mode 用 App-Level Token を確認")
     except SlackApiError as e:
         code = e.response.get("error", "unknown")
@@ -352,8 +352,11 @@ def run_google_auth(reauth: bool = False, port: int = 0):
         if "access_denied" in message:
             print()
             warn("Google がアクセスを拒否しました (access_denied)")
-            print("    OAuth同意画面が「テスト中」のままの可能性が高いです。")
+            print("    次のどちらかの可能性が高いです。")
+            print("    - 公開ステータスが「テスト中」で、自分がテストユーザーに入っていない")
+            print("    - ユーザーの種類が「内部」なのに、組織外のアカウントで認証した")
             print("    https://console.cloud.google.com/auth/audience を開き、")
+            print("    組織のプロジェクトなら「内部に公開」して組織のアカウントで認証するか、")
             print("    「アプリを公開」で公開ステータスを「本番環境」にしてください。")
             print("    (テストユーザーに自分を追加しても通りますが、")
             print("     その場合トークンが7日で失効します)")
@@ -860,9 +863,11 @@ def main():
     print("  過去ログの取り込み:  python backfill.py --days 7")
     print("  リアルタイム収集:    python main.py")
     print()
-    print("\033[33m注意:\033[0m OAuth同意画面が「テスト中」のままだと、Google の仕様で")
-    print("  リフレッシュトークンが7日で失効します。継続運用する場合は")
-    print("  同意画面を「本番環境」に切り替えてください。")
+    print("\033[33m注意:\033[0m ユーザーの種類が「外部」で公開ステータスが「テスト中」だと、")
+    print("  Google の仕様でリフレッシュトークンが7日で失効します。継続運用する場合は")
+    print("  https://console.cloud.google.com/auth/audience で次のどちらかにしてください。")
+    print("  - Google Workspace 組織のプロジェクトで、組織のアカウントで認証した場合: 「内部に公開」")
+    print("  - それ以外: 「アプリを公開」で「本番環境」へ")
 
 
 if __name__ == "__main__":
