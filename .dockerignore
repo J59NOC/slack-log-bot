@@ -1,0 +1,19 @@
+# 認証情報・ローカル状態はイメージに入れない
+.env
+.env.*
+!.env.example
+profiles/
+*.json
+*.log
+priv.txt
+
+.git/
+.github/
+.venv/
+venv/
+__pycache__/
+*.pyc
+.vscode/
+docs/
+deploy/
+tests/

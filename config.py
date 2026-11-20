@@ -75,11 +75,24 @@ def _client_file() -> str:
     return str(BASE_DIR / "client_secret.json")
 
 
+def _resolve(path: str) -> str:
+    """A relative path from .env means this profile's directory, not the cwd."""
+    return str(PROFILE_DIR / path) if not os.path.isabs(path) else path
+
+
 # The token is the account, so it never falls back to another profile's.
-GOOGLE_DRIVE_TOKEN_FILE = os.environ.get("GOOGLE_DRIVE_TOKEN_FILE") or str(
-    PROFILE_DIR / "drive_token.json"
+GOOGLE_DRIVE_TOKEN_FILE = _resolve(
+    os.environ.get("GOOGLE_DRIVE_TOKEN_FILE") or "drive_token.json"
 )
-GOOGLE_OAUTH_CLIENT_FILE = os.environ.get("GOOGLE_OAUTH_CLIENT_FILE") or _client_file()
+GOOGLE_OAUTH_CLIENT_FILE = (
+    _resolve(os.environ["GOOGLE_OAUTH_CLIENT_FILE"])
+    if os.environ.get("GOOGLE_OAUTH_CLIENT_FILE")
+    else _client_file()
+)
+# google_auth reads these from the environment, so hand it the resolved paths;
+# otherwise a profile's bot would pick up the checkout root's token.
+os.environ["GOOGLE_DRIVE_TOKEN_FILE"] = GOOGLE_DRIVE_TOKEN_FILE
+os.environ["GOOGLE_OAUTH_CLIENT_FILE"] = GOOGLE_OAUTH_CLIENT_FILE
 
 TIMEZONE = os.environ.get("TIMEZONE", "Asia/Tokyo")
 

@@ -16,6 +16,7 @@ Usage:
 
 import argparse
 import logging
+import os
 import sys
 from datetime import datetime, timedelta, timezone
 
@@ -30,13 +31,16 @@ from slack_utils import (
     install_retry_handlers,
 )
 
+# A container's filesystem is read-only to the bot and its stdout is already
+# kept by Docker, so the log file can be turned off with COLLECT_WEEKLY_LOG="".
+_log_file = os.environ.get("COLLECT_WEEKLY_LOG", "collect_weekly.log")
+_handlers: list[logging.Handler] = [logging.StreamHandler(sys.stdout)]
+if _log_file:
+    _handlers.append(logging.FileHandler(_log_file, encoding="utf-8"))
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    handlers=[
-        logging.StreamHandler(sys.stdout),
-        logging.FileHandler("collect_weekly.log", encoding="utf-8"),
-    ],
+    handlers=_handlers,
 )
 logger = logging.getLogger(__name__)
 

@@ -1,0 +1,32 @@
+# Slack Log Bot（Docker Compose）
+#
+# 1 サービス = 1 bot（プロファイル）。認証情報は ./profiles/<名前>/ に置く。
+#   profiles/private/.env
+#   profiles/private/drive_token.json
+#
+# 起動:        docker compose up -d --build
+# ログ:        docker compose logs -f
+# 週次収集:    docker compose run --rm private python collect_weekly.py
+# バックフィル: docker compose run --rm private python backfill.py --days 14
+#
+# bot を増やすときは、private を複製して名前と SLACK_LOG_PROFILE を変える。
+
+x-bot: &bot
+  build: .
+  image: slack-log-bot
+  restart: unless-stopped
+  # トークン更新時に drive_token.json を書き戻すので、ホストのファイル所有者と揃える
+  user: "${UID:-1000}:${GID:-1000}"
+  volumes:
+    - ./profiles:/app/profiles
+  read_only: true
+  tmpfs:
+    - /tmp
+  security_opt:
+    - no-new-privileges:true
+
+services:
+  private:
+    <<: *bot
+    environment:
+      SLACK_LOG_PROFILE: private
