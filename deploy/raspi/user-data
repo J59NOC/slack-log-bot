@@ -108,7 +108,7 @@ write_files:
       #!/bin/bash
       # クローンと venv 構築。初回起動時に一度だけ走る。
       set -euo pipefail
-      REPO=https://github.com/nnnnnnnnnke/slack-log-bot.git
+      REPO=https://github.com/J59NOC/slack-log-bot.git
       DEST=/home/slackbot/slack-log-bot
 
       # network-online.target は「リンクが上がった」までしか保証しない。

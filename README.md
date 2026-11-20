@@ -515,7 +515,7 @@ Google の認証情報は使い回せます。同じ Google アカウントに�
 ### Step 3: botのインストール
 
 ```bash
-git clone https://github.com/nnnnnnnnnke/slack-log-bot.git
+git clone https://github.com/J59NOC/slack-log-bot.git
 cd slack-log-bot
 
 uv venv --python 3.13 .venv
@@ -882,4 +882,7 @@ SLACK_LOG_INTEGRATION=1 uv run python -m unittest \
 
 ## ライセンス
 
-MIT
+MIT（[LICENSE](LICENSE)）
+
+このリポジトリは [nnnnnnnnnke/slack-log-bot](https://github.com/nnnnnnnnnke/slack-log-bot) をもとに、
+独自に機能追加・改修しているものです。

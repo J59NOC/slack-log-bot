@@ -10,8 +10,8 @@ GitHub Actions が `privacy-policy/` ディレクトリだけを Pages artifact 
 公開 URL:
 
 ```text
-https://mikiT.github.io/slack-log-bot/
-https://mikiT.github.io/slack-log-bot/privacy-policy.html
+https://j59noc.github.io/slack-log-bot/
+https://j59noc.github.io/slack-log-bot/privacy-policy.html
 ```
 
 ## GitHub 側の設定
@@ -32,9 +32,9 @@ feature ブランチで試す場合、`github-pages` environment の **Deploymen
 Google Auth Platform のブランディング画面には、次を入力します。
 
 ```text
-承認済みドメイン: mikiT.github.io
-アプリケーションのホームページ: https://mikiT.github.io/slack-log-bot/
-プライバシーポリシー: https://mikiT.github.io/slack-log-bot/privacy-policy.html
+承認済みドメイン: j59noc.github.io
+アプリケーションのホームページ: https://j59noc.github.io/slack-log-bot/
+プライバシーポリシー: https://j59noc.github.io/slack-log-bot/privacy-policy.html
 ```
 
-`mikiT.github.io` の所有権確認を求められた場合は、Google Search Console の案内に従って確認してください。
+`j59noc.github.io` の所有権確認を求められた場合は、Google Search Console の案内に従って確認してください。
