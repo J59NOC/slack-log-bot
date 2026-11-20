@@ -20,7 +20,7 @@ Slack無料プランではメッセージ履歴が一定期間で消えてしま
 - **変更への追従** — Slack側で表示名を変えたりメッセージを編集すると、記録済みの行にも反映される
 - **削除への追従** — Slackでメッセージを削除すると、その行も消える。添付ファイルはDriveのゴミ箱へ
 - **リネーム追従** — スプレッドシートはチャンネルIDで紐づくため、チャンネル名を変えてもログが分断されない
-- **アクセス制御** — チャンネルごとに別スプレッドシートを作り、そのチャンネルのメンバーにのみ共有。参加・退出に応じて自動で追従
+- **アクセス制御** — public channel は共有スプレッドシート、private channel は専用フォルダと専用スプレッドシートに分け、private channel のメンバーだけに共有。参加・退出に応じて自動で追従
 - **保存先を選べる** — botアカウントのマイドライブ、または**共有ドライブ**。共有ドライブならファイルの所有者が組織になり、botのアカウントを失ってもログが残る
 - **複数botの並行運用** — 1つのチェックアウトから、公開チャンネル用・非公開チャンネル用のように保存先ごと分けた複数のbotを動かせる
 - **見やすいスプレッドシート** — グリーンヘッダー・色分け・メッセージ列11ptフォント・列幅調整・オートフィルターを自動適用
@@ -76,31 +76,44 @@ slack_log_bot/
 
 | コマンド | 説明 |
 |----------|------|
-| `@Slackログ保存bot help` | コマンド一覧とスプレッドシートURLを表示 |
-| `@Slackログ保存bot url` | そのチャンネルのスプレッドシートURLを表示 |
-| `@Slackログ保存bot backfill` | そのチャンネルの過去90日分のログを即座に収集 |
-| `@Slackログ保存bot backfill 30` | 過去N日分を収集（日数指定） |
+| `@slack-log-bot-private help` | コマンド一覧とスプレッドシートURLを表示 |
+| `@slack-log-bot-private url` | そのチャンネルのスプレッドシートURLを表示 |
+| `@slack-log-bot-private backfill` | そのチャンネルの過去90日分のログを即座に収集 |
+| `@slack-log-bot-private backfill 30` | 過去N日分を収集（日数指定） |
 
 ## スプレッドシートの構成
 
-**チャンネルごとに専用のスプレッドシート**が自動作成され、そのチャンネルのメンバーの
-Google アカウントにのみ共有されます。
+public channel のログは、ルートフォルダ内の `public` フォルダに自動検出・作成される
+索引スプレッドシートに、チャンネルごとのタブとして追加されます。public channel のログは、
+そのスプレッドシートの共有設定に従います。
+
+private channel は、チャンネルごとに専用の Drive フォルダとスプレッドシートを作成し、
+Slack チャンネルのメンバーの Google アカウントにのみ共有されます。
 
 ```
-📊 Slack ログ                      ← 索引（使い方とチャンネル一覧）
-📊 Slack Log - #general            → #general のメンバーのみ閲覧可
-📊 Slack Log - #hr-team            → #hr-team のメンバーのみ閲覧可
-📊 Slack Log - #secret-project     → #secret-project のメンバーのみ閲覧可
+📊 Slack ログ                      ← 索引 + public channel のログタブ
+ ├── 📖 このシートについて
+ ├── 📇 チャンネル一覧
+ ├── #general                       ← public channel のログタブ
+ └── #random                        ← public channel のログタブ
+
+📁 Slack ログ (ルートフォルダ)
+ ├── 📁 public
+ │    └── 📊 Slack ログ              ← public channel のログタブ
+ └── 📁 private
+   └── 📁 #secret-project         ← private channel 専用フォルダ
+     ├── 📊 Slack Log - #secret-project
+     └── 添付ファイル
 ```
 
-> Google スプレッドシートは**タブ単位で権限を分けられません**。
-> 1枚のファイルにタブを並べると、1チャンネル分を誰かに渡した時点で
-> 同じファイル内の全チャンネルが見えてしまうため、ファイルごと分けています。
+> public channel は同じスプレッドシートのタブなので、そのスプレッドシートを共有された人は
+> public channel の各タブを閲覧できます。private channel のログを分ける必要があるため、
+> private channel はチャンネルごとに別スプレッドシートにしています。
 
-索引スプレッドシート（`.env` の `GOOGLE_SPREADSHEET_ID`）にはログ本体は入っておらず、
-`📖 このシートについて` と `📇 チャンネル一覧` の2タブだけを持ちます。
-チャンネル一覧には各チャンネルとそのログのURLが並び、新しいチャンネルが
-記録されるたびに自動で更新されます。
+索引スプレッドシートにはログ本体は入っておらず、
+`📖 このシートについて` と `📇 チャンネル一覧` に加えて、public channel のログタブを持ちます。
+チャンネル一覧には public channel とそのログタブへの URL が並びます。private channel は
+アクセス制御のため一覧には表示されず、専用フォルダ内のスプレッドシートを使用します。
 
 > **メンバーのメールアドレスが必要です。** Slack プロフィールのメールアドレスを
 > Google アカウントとして共有先に指定するため、`users:read.email` スコープが要ります。
@@ -112,43 +125,43 @@ Google アカウントにのみ共有されます。
 
 | きっかけ | 動作 |
 |---------|------|
-| メンバーが**参加** | そのチャンネルのスプレッドシートと添付フォルダを自動で共有 |
-| メンバーが**退出** | そのメンバーの共有を自動で解除 |
-| チャンネルが**リネーム** | スプレッドシートとDriveフォルダの名前を追従（ログは分断されません） |
+| private メンバーが**参加** | そのチャンネルのスプレッドシートと専用フォルダを自動で共有 |
+| private メンバーが**退出** | そのメンバーのスプレッドシートと専用フォルダの共有を自動で解除 |
+| チャンネルが**リネーム** | private のスプレッドシートとDriveフォルダの名前を追従（ログは分断されません） |
 | メンバーが**表示名を変更** | 記録済みの行の表示名も書き換え、色もそのまま引き継ぐ |
 | メッセージが**編集** | その行の本文を更新（行の高さも再計算） |
 | メッセージが**削除** | その行を削除。添付ファイルは Drive のゴミ箱へ |
 | 週次収集の実行時 | 全チャンネルで未共有のメンバーを補完（botの停止中に起きた参加を回収） |
 
-共有する権限は**編集者**です。Google スプレッドシートのアウトライン（スレッドの
-折りたたみ `+` / `−`）は閲覧権限では操作できないためで、代わりに
-**編集者による再共有は禁止**に設定しています。プライベートチャンネルのログを
-メンバーの1人が他所へ渡せてしまうのを防ぐためです。
-
-付与したい権限より弱い権限しか持っていない人は自動で昇格します。オーナーや、
-手でより強い権限を付けた人は下げません。
+private channel に共有する権限は**編集者**です。Google スプレッドシートのアウトライン（スレッドの
+折りたたみ `+` / `−`）は閲覧権限では操作できないためです。private channel のフォルダは
+添付ファイルと専用スプレッドシートをまとめて保護します。編集者による再共有は禁止し、
+メンバーの1人がログを他所へ渡せないようにしています。付与したい権限より弱い権限しか
+持っていない人は自動で昇格します。オーナーや、手でより強い権限を付けた人は下げません。
 
 > メールアドレスが1件も解決できなかった場合、既存の共有は**解除されません**。
 > 一時的な取得失敗でチャンネル全員がアクセスを失うのを避けるためです。
 
 #### 共有ドライブに保存する場合
 
-保存先フォルダが**共有ドライブ**の中にある場合、上の自動同期は行いません。
+保存先フォルダが**共有ドライブ**の中にある場合も、private channel ごとのフォルダを
+限定公開にした `private` 親フォルダの下に作成し、Slack メンバーだけをそのフォルダへ共有します。public channel は
+共有ドライブの通常のメンバー権限に従います。
 
 | | マイドライブ | 共有ドライブ |
 |---|---|---|
 | ファイルの所有者 | bot の Google アカウント | **共有ドライブ（組織）** |
 | bot のアカウントを失ったら | ログも失う | ログは残る |
-| チャンネルごとのアクセス制御 | 効く | **効かない** |
-| 退出時の権限剥奪 | 効く | **効かない** |
+| チャンネルごとのアクセス制御 | 効く | `private` 親フォルダの限定公開で効く |
+| 退出時の権限剥奪 | 効く | private フォルダで効く |
 
-共有ドライブは配下のフォルダやファイルで権限を絞れない（足すことしかできない）
-仕様です。そのドライブのメンバーは中の全ファイルを読めます。bot が個別共有を
-足しても外せなくなるだけなので、共有ドライブを検出したときは何もせず、
-閲覧範囲の判断をドライブのメンバーシップに委ねます。
+共有ドライブを使う場合は、bot の起動前に `private` 親フォルダを Google Drive の
+「限定公開」に設定してください。channel ごとのフォルダ、専用スプレッドシート、
+添付ファイルはその権限を継承します。Google Workspace 管理者の設定で限定公開を
+使えない場合は、共有ドライブの管理者に設定を依頼してください。
 
-**その系統のログを全部見てよい人だけ**を、その共有ドライブのメンバーにしてください。
-チャンネル単位で見せ分けたい場合は、共有ドライブではなくマイドライブに置いてください。
+共有ドライブのメンバーは、限定アクセスを設定していない public channel のログを閲覧できます。
+private channel のログを見せる相手は Slack channel のメンバーとして管理してください。
 
 保存先の決め方と権限の設定は、[Step 4](#step-4-保存先を決めてセットアップ) を参照してください。
 
@@ -201,24 +214,23 @@ botが作るものは、すべて1つのフォルダにまとまります。
 ```
 📁 Slack ログ (ルートフォルダ)
  │
- ├── 📊 Slack ログ                         ← 索引（使い方 + チャンネル一覧）
+ ├── 📁 public
+ │    ├── 📊 Slack ログ                    ← public channel のログタブ
+ │         ├── 📁 #general
+ │         └── 📁 #random
  │
- ├── 📊 Slack Log - #general               ← チャンネルごとのログ
- ├── 📊 Slack Log - #hr-team                  各チャンネルのメンバーのみ閲覧可
- ├── 📊 Slack Log - #secret-project
- │
- └── 📁 添付ファイル
-      ├── 📁 #general        ← #general のメンバーのみ閲覧可
-      │    ├── 会議資料.pdf
-      │    └── 週報.xlsx
-      └── 📁 #hr-team        ← #hr-team のメンバーのみ閲覧可
-           └── 人事異動案.pdf
+ └── 📁 private
+   ├── 📁 #hoge-private                 ← チャンネルメンバーのみ
+   │    ├── 📊 Slack Log - #hoge-private
+   │    └── 会議資料.pdf
+   └── 📁 #fuga-private                 ← チャンネルメンバーのみ
+     ├── 📊 Slack Log - #fuga-private
+     └── 人事異動案.pdf
 ```
 
-> `python setup.py` は再実行するたびにこの構成へ寄せます。
-> フォルダ外のスプレッドシートはフォルダ内へ、ルート直下のチャンネル別フォルダは
-> 「添付ファイル」の下へ移動します。**IDとURLは変わらない**ため、
-> スプレッドシートに記録済みのリンクはそのまま使えます。
+> `python setup.py` は再実行するたびに、索引スプレッドシートをルートフォルダへ配置します。
+> private channel のフォルダとスプレッドシート、public channel の添付ファイル用フォルダは、
+> それぞれの保存場所を維持します。**IDとURLは変わらない**ため、記録済みのリンクはそのまま使えます。
 
 ---
 
@@ -261,10 +273,7 @@ App-Level Token だけはマニフェストで作れないため、手動で生�
 1. 左メニュー **「Install App」** → **「Install to Workspace」**
 2. 権限を確認して **「許可する」**
 3. 表示される **Bot User OAuth Token**（`xoxb-...`）を控えておく
-4. 記録したいチャンネルにbotを招待:
-   ```
-   /invite @Slackログ保存bot
-   ```
+4. 記録したいチャンネルにbotを招待: `/invite @slack-log-bot-private`
    > プライベートチャンネルにも忘れずに招待してください
 
 <details>
@@ -316,23 +325,49 @@ App-Level Token だけはマニフェストで作れないため、手動で生�
    - **Google Sheets API** — [有効化リンク](https://console.cloud.google.com/apis/library/sheets.googleapis.com)
    - **Google Drive API** — [有効化リンク](https://console.cloud.google.com/apis/library/drive.googleapis.com)
 3. **OAuth同意画面**（[Google Auth Platform](https://console.cloud.google.com/auth/overview)）を設定
-   - ユーザーの種類: **外部**
-   - アプリ名・ユーザーサポートメール・デベロッパー連絡先を入力
-4. **[対象](https://console.cloud.google.com/auth/audience) → 「アプリを公開」** を実行し、公開ステータスを **「本番環境」** にする
-5. **[認証情報](https://console.cloud.google.com/apis/credentials) → 「認証情報を作成」→「OAuth クライアント ID」**
+  - 左メニューの **「ブランディング」** を開く
+  - **アプリ名**に `Slackログ保存bot_privch対応版` を入力
+  - **ユーザーサポートメール**は自分の Google アカウントを選択
+  - 下部の **デベロッパーの連絡先情報**に自分のメールアドレスを入力
+  - ホームページとプライバシーポリシーは、後述の GitHub Pages URL を入力
+  - ロゴと利用規約 URL は個人利用なら空欄のままでよい
+  - 画面下部の **「保存」** を押す
+4. **[対象](https://console.cloud.google.com/auth/audience)** を開く
+  - **ユーザーの種類**は **外部** を選択
+  - **テストユーザー**に、Drive と Sheets を操作する自分の Google アカウントを追加
+5. 必要に応じて **[データアクセス](https://console.cloud.google.com/auth/scopes)** を開き、次のスコープを追加
+  - `https://www.googleapis.com/auth/spreadsheets`
+  - `https://www.googleapis.com/auth/drive`
+6. **[認証情報](https://console.cloud.google.com/apis/credentials) →「認証情報を作成」→「OAuth クライアント ID」**
    - アプリケーションの種類: **デスクトップアプリ**
    - 作成後、JSONをダウンロードして `client_secret.json` としてプロジェクトに配置
 
+> ブランディング画面のアプリ名が `temp-...` のままでも動作しますが、OAuth の確認画面に表示される名前なので、
+> この bot 用の名前に変更してください。**確認ステータス**の警告は、個人利用の初回設定では無視して構いません。
+>
+> Google Auth Platform の画面に **「外部」** が表示されない場合は、ブランディングを保存してから
+> 左メニューの **「対象」** を開いてください。そこで「内部」または「外部」を選択します。
+> 「内部」しか選べない場合は、Google Workspace 組織に属するプロジェクトで、管理者が外部アプリを
+> 禁止している可能性があります。その場合は管理者に外部アプリの許可を依頼するか、個人利用できる
+> Google Cloud プロジェクトを選択してください。
+
+GitHub Pages の設定、公開 URL、Google OAuth への入力値は
+[`docs/github-pages.md`](docs/github-pages.md) を参照してください。
+
 > [!IMPORTANT]
-> **手順4（本番環境への切り替え）を飛ばさないでください。**
+> 個人利用や動作確認だけなら、アプリを審査へ送信する必要はありません。
+> **対象**の画面で自分の Google アカウントをテストユーザーに追加してください。
+> 認証時に「このアプリは Google で確認されていません」と警告が出た場合は、
+> **「詳細」→「（アプリ名）に移動」** で進めます。
 >
-> 「テスト中」のままだと、次の2つが起きます:
-> - テストユーザーに自分を追加していないと、認証時に **`エラー 403: access_denied`** で弾かれる
-> - 追加して通した場合も、Googleの仕様で **リフレッシュトークンが7日で失効**し、1週間後に突然動かなくなる
+> ユーザーの種類が「外部」で公開ステータスが「テスト中」の間は、Google の仕様で
+> リフレッシュトークンが7日で失効します。継続運用する場合は、次のどちらかにしてください。
 >
-> 未審査のまま公開しても問題なく動作します（100ユーザーまでの制限付き）。
-> 認証時に「このアプリは Google で確認されていません」と警告が出ますが、
-> **「詳細」→「（アプリ名）に移動」** で進めてください。
+> - **Google Workspace 組織のプロジェクトの場合**：**対象**の画面で **「内部に公開」** を押し、
+>   組織のアカウントで認証します。「内部」には公開ステータスがなく、7日失効もテストユーザーの登録もありません。
+>   組織外のアカウント（`@gmail.com` など）では認証できなくなるので注意してください。
+> - **それ以外（組織なしのプロジェクト、個人の Google アカウント）**：**「アプリを公開」** で
+>   本番環境に切り替えます。個人利用なら審査を通さなくても動きます（未確認アプリの警告は出ます）。
 
 ---
 
@@ -480,11 +515,11 @@ Google の認証情報は使い回せます。同じ Google アカウントに�
 ### Step 3: botのインストール
 
 ```bash
-git clone https://github.com/nnnnnnnnnke/slack-log-bot.git
+git clone https://github.com/J59NOC/slack-log-bot.git
 cd slack-log-bot
 
 uv venv --python 3.13 .venv
-uv pip install --python .venv/bin/python -r requirements.txt
+uv sync
 ```
 
 > [!IMPORTANT]
@@ -503,6 +538,14 @@ python3.13 -m venv .venv     # バージョンを明示する
 ```
 
 </details>
+
+以降は `uv run` 経由で実行できます。
+
+```bash
+uv run setup.py
+uv run main.py
+uv run backfill.py --days 7
+```
 
 ---
 
@@ -538,8 +581,11 @@ python3.13 -m venv .venv     # バージョンを明示する
 bot がそこでやることを実際に全部試して、最後に全部消します。何も書き換えません。
 
 ```bash
-python setup.py --check-drive 'https://drive.google.com/drive/folders/xxxxx'
+uv run setup.py --check-drive 'https://drive.google.com/drive/folders/xxxxx'
 ```
+
+共有ドライブを指定した場合は、private channel 用の限定アクセス設定も実際の Drive API で
+確認し、テスト用に作成したフォルダ・ファイルは最後に削除します。
 
 ```
 保存先の事前チェック
@@ -592,8 +638,8 @@ python setup.py --reauth   # Googleの認証だけやり直す
 <details>
 <summary><b>手動で .env を設定する場合</b></summary>
 
-既存のスプレッドシート・フォルダを使いたいときは、`.env` に直接IDを書けば
-`setup.py` はそれを尊重して自動作成をスキップします。
+既存の保存先フォルダを使いたいときは、`.env` に親フォルダ ID を直接指定します。
+public/private フォルダと public スプレッドシートは、その親フォルダから自動検出されます。
 
 ```bash
 cp .env.example .env
@@ -603,8 +649,7 @@ cp .env.example .env
 SLACK_BOT_TOKEN=xoxb-xxxxxxxxxxxx-xxxxxxxxxxxx-xxxxxxxxxxxxxxxxxxxxxxxx
 SLACK_APP_TOKEN=xapp-x-xxxxxxxxxx-xxxxxxxxxxxxx-xxxxxxxx
 
-# URLの /d/ と /edit の間 / folders/ の後ろ
-GOOGLE_SPREADSHEET_ID=your_spreadsheet_id_here
+# Google DriveフォルダURLの /folders/ の後ろ
 GOOGLE_DRIVE_FOLDER_ID=your_folder_id_here
 
 TIMEZONE=Asia/Tokyo
@@ -682,6 +727,9 @@ sudo systemctl enable --now slack-log-bot.service
 # 過去8日分を収集（7日 + 1日の重複マージン）
 python collect_weekly.py
 
+# botが参加しているpublic channel全件
+python collect_weekly.py --public
+
 # 特定チャンネルのみ
 python collect_weekly.py --channel general
 
@@ -727,11 +775,14 @@ sudo systemctl enable --now slack-log-bot-weekly.timer
 ### C. 過去メッセージの取り込み（バックフィル）
 
 初回導入時や、過去のメッセージを遡って取り込みたいときに使います。
-Slackからコマンドでも実行できます: `@Slackログ保存bot backfill`
+Slackからコマンドでも実行できます: `@slack-log-bot-private backfill`
 
 ```bash
 # 全チャンネル・過去90日分（デフォルト）
 python backfill.py
+
+# botが参加しているpublic channel全件・過去90日分
+python backfill.py --public
 
 # 特定チャンネルのみ
 python backfill.py --channel general
@@ -749,14 +800,22 @@ python backfill.py --days 30
 
 ### `エラー 403: access_denied` /「Google の審査プロセスを完了していません」
 
-OAuth同意画面が **「テスト中」** で、自分がテストユーザーに入っていない状態です。
-[対象](https://console.cloud.google.com/auth/audience) の画面で **「アプリを公開」** を実行してください
+次のどちらかの状態です。
+
+- OAuth同意画面が **「テスト中」** で、自分がテストユーザーに入っていない
+- ユーザーの種類が **「内部」** なのに、組織外のアカウント（`@gmail.com` など）で認証しようとした
+
+[対象](https://console.cloud.google.com/auth/audience) の画面で、Google Workspace 組織のプロジェクトなら
+**「内部に公開」** にして組織のアカウントで認証してください。それ以外なら **「アプリを公開」** を実行してください
 （テストユーザーに自分を追加しても通りますが、その場合トークンが7日で失効します）。
 
-### 1週間ほど動いた後に突然 Google 認証が失敗する
+### 1週間ほど動いた後に突然 Google 認証が失敗する（`invalid_grant`）
 
-OAuth同意画面が **「テスト中」** のままだと、Googleの仕様でリフレッシュトークンが
-7日で失効します。同意画面を **「本番環境」** に切り替えてから、再認証してください。
+ユーザーの種類が「外部」で公開ステータスが **「テスト中」** のままだと、Googleの仕様でリフレッシュトークンが
+7日で失効します。[対象](https://console.cloud.google.com/auth/audience) の画面で、
+Google Workspace 組織のプロジェクトなら **「内部に公開」**、それ以外なら **「アプリを公開」** で
+本番環境に切り替えてから、再認証してください。保存先が共有ドライブなら、認証するアカウントを
+組織のアカウントに替えても既存のファイルはそのまま使えます（そのアカウントが共有ドライブのメンバーであれば）。
 
 ```bash
 python setup.py --reauth
@@ -771,9 +830,10 @@ python setup.py --reauth
 Sheets と Drive の認証が1本化される前のトークンです（Drive権限しか持っていません）。
 `python setup.py --reauth` で認証をやり直してください。
 
-### `[設定エラー] GOOGLE_SPREADSHEET_ID が .env に設定されていません`
+### `public スプレッドシートが見つかりません`
 
-`python setup.py` を実行すると、スプレッドシートを自動作成してIDを `.env` に書き込みます。
+親フォルダの `.env` 設定（`GOOGLE_DRIVE_FOLDER_ID`）を確認し、`uv run setup.py` を
+実行してください。`public` フォルダと public 用スプレッドシートが自動作成されます。
 
 ### スコープ不足のエラーが出る
 
@@ -782,7 +842,7 @@ Sheets と Drive の認証が1本化される前のトークンです（Drive権
 
 ### botがチャンネルのメッセージを取得できない
 
-- botがチャンネルに招待されているか確認: `/invite @Slackログ保存bot`
+- botがチャンネルに招待されているか確認: `/invite @slack-log-bot-private`
 - プライベートチャンネルの場合、`groups:history` と `groups:read` スコープがあるか確認
 
 ### botのメンションに反応しない
@@ -792,6 +852,37 @@ Sheets と Drive の認証が1本化される前のトークンです（Drive権
 
 ---
 
+## テスト
+
+単体テストは Google API をモックしているため、`setup.py` 実行前でも実行できます。
+依存関係を同期してから、次を実行します。
+
+```bash
+uv sync
+uv run python -m unittest discover -s tests -v
+```
+
+Google API へ接続せず、Drive のフォルダ作成・移動をモックで検証します。
+
+実際の Slack／Google Drive／Google Sheets との接続確認やバックフィルは、先に
+`uv run setup.py` を完了させ、`.env` と `drive_token.json` を用意してから実行してください。
+
+共有ドライブ配下への実 API 保存を確認する場合は、保存先の設定と Google 認証を済ませたうえで、
+次を実行します。テスト用のフォルダ、スプレッドシート、添付ファイルを作成し、終了時に削除します。
+
+```bash
+SLACK_LOG_INTEGRATION=1 uv run python -m unittest \
+  tests.test_google_drive_integration -v
+```
+
+共有ドライブの管理設定や bot の権限によって失敗する場合があります。失敗時はテスト用の
+フォルダが残ることがあるため、Drive 上で `__slack-log-bot-integration-` を確認してください。
+
+---
+
 ## ライセンス
 
-MIT
+MIT（[LICENSE](LICENSE)）
+
+このリポジトリは [nnnnnnnnnke/slack-log-bot](https://github.com/nnnnnnnnnke/slack-log-bot) をもとに、
+独自に機能追加・改修しているものです。

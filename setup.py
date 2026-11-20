@@ -224,6 +224,18 @@ def check_slack(env: dict[str, str]) -> dict[str, str]:
         env["SLACK_APP_TOKEN"] = ask("SLACK_APP_TOKEN (xapp-...)", check_token_shape("xapp-"))
         warn_if_truncated(env["SLACK_APP_TOKEN"], 64)
 
+    try:
+        WebClient().apps_connections_open(app_token=env["SLACK_APP_TOKEN"])
+        ok("Socket Mode 用 App-Level Token を確認")
+    except SlackApiError as e:
+        code = e.response.get("error", "unknown")
+        warn(f"App-Level Token が無効です: {code}")
+        print("    Basic Information → App-Level Tokens で、現在の Slack App 用に")
+        print("    connections:write を付けた xapp-... token を再発行してください。")
+        fail("Socket Mode 用 App-Level Token を確認できませんでした。")
+    except Exception as e:
+        fail(f"Socket Mode 用 App-Level Token の確認に失敗しました: {e}")
+
     # Re-prompt on failure rather than exiting: re-running the whole wizard
     # because one paste came up short is needless.
     attempts = 3
@@ -340,8 +352,11 @@ def run_google_auth(reauth: bool = False, port: int = 0):
         if "access_denied" in message:
             print()
             warn("Google がアクセスを拒否しました (access_denied)")
-            print("    OAuth同意画面が「テスト中」のままの可能性が高いです。")
+            print("    次のどちらかの可能性が高いです。")
+            print("    - 公開ステータスが「テスト中」で、自分がテストユーザーに入っていない")
+            print("    - ユーザーの種類が「内部」なのに、組織外のアカウントで認証した")
             print("    https://console.cloud.google.com/auth/audience を開き、")
+            print("    組織のプロジェクトなら「内部に公開」して組織のアカウントで認証するか、")
             print("    「アプリを公開」で公開ステータスを「本番環境」にしてください。")
             print("    (テストユーザーに自分を追加しても通りますが、")
             print("     その場合トークンが7日で失効します)")
@@ -662,7 +677,10 @@ def provision_google_resources(
 ) -> dict[str, str]:
     import gspread
 
-    from google_drive import drive_service, shared_drive_id
+    from google_drive import (
+        PUBLIC_FOLDER_NAME, PRIVATE_FOLDER_NAME, drive_service, ensure_folder,
+        find_file, move_into_folder, shared_drive_id,
+    )
     from sheet_guide import ensure_guide_sheet
 
     step(3, "スプレッドシートと Drive フォルダの準備")
@@ -698,35 +716,38 @@ def provision_google_resources(
     drive_id = shared_drive_id(drive, folder_id)
     drive.bind_drive(drive_id)
     in_shared_drive = bool(drive_id)
+    public_folder_id = ensure_folder(drive, PUBLIC_FOLDER_NAME, folder_id)
+    ensure_folder(drive, PRIVATE_FOLDER_NAME, folder_id)
+    ok("public / private フォルダを準備")
     if in_shared_drive:
         ok("保存先は共有ドライブです")
         print("      ファイルの所有者は共有ドライブ（組織）になります。")
-        print("      閲覧できる範囲は共有ドライブのメンバーで決まり、")
-        print("      チャンネルごとの個別共有は行いません。")
+        print("      private channel は限定公開済みの親フォルダの権限を継承します。")
 
-    if env.get("GOOGLE_SPREADSHEET_ID"):
-        ok(f"既存のスプレッドシートを使用: {env['GOOGLE_SPREADSHEET_ID']}")
+    spreadsheet_id = env.get("GOOGLE_SPREADSHEET_ID") or find_file(
+        drive, public_folder_id, "application/vnd.google-apps.spreadsheet"
+    )
+    if spreadsheet_id:
+        ok(f"既存のpublicスプレッドシートを使用: {spreadsheet_id}")
     else:
         ss_name = SPREADSHEET_NAME.format(workspace=workspace)
-        ss_id, created = find_or_create(
+        spreadsheet_id, created = find_or_create(
             drive, ss_name, "application/vnd.google-apps.spreadsheet",
-            parent=folder_id,
+            parent=public_folder_id,
         )
-        env["GOOGLE_SPREADSHEET_ID"] = ss_id
-        write_env(env)
         ok(f"スプレッドシートを{'作成' if created else '検出'}: {ss_name}")
-        print(f"      https://docs.google.com/spreadsheets/d/{ss_id}/edit")
+        print(f"      https://docs.google.com/spreadsheets/d/{spreadsheet_id}/edit")
 
     # Spreadsheets made before this was folded in sit at My Drive root.
     try:
-        if move_into_folder(drive, env["GOOGLE_SPREADSHEET_ID"], folder_id):
-            ok("スプレッドシートを Drive フォルダに移動")
+        if move_into_folder(drive, spreadsheet_id, public_folder_id):
+            ok("スプレッドシートを public フォルダに移動")
     except Exception as e:
         warn(f"スプレッドシートをフォルダに移動できませんでした: {e}")
 
     # Google leaves an empty default sheet behind; make it the guide.
     try:
-        spreadsheet = gspread.authorize(creds).open_by_key(env["GOOGLE_SPREADSHEET_ID"])
+        spreadsheet = gspread.authorize(creds).open_by_key(spreadsheet_id)
         if ensure_guide_sheet(spreadsheet, in_shared_drive):
             ok("説明タブ「📖 このシートについて」を作成")
         else:
@@ -740,13 +761,6 @@ def provision_google_resources(
             ok(f"{stamped} 件にチャンネルIDを付与（リネーム追従のため）")
     except Exception as e:
         warn(f"チャンネルIDを付与できませんでした: {e}")
-
-    try:
-        moved = organise_attachment_folders(drive, folder_id)
-        if moved:
-            ok(f"添付フォルダ {moved} 件を「{ATTACHMENTS_FOLDER_NAME}」にまとめました")
-    except Exception as e:
-        warn(f"添付フォルダを整理できませんでした: {e}")
 
     return env
 
@@ -764,13 +778,28 @@ def verify(env: dict[str, str]):
         import config
         import gspread
 
-        from google_drive import drive_service
+        from google_drive import drive_service, shared_drive_id
 
         creds = google_auth.load_credentials()
         gc = gspread.authorize(creds)
-        ss = gc.open_by_key(config.GOOGLE_SPREADSHEET_ID)
-        ok(f"スプレッドシートを開けました: {ss.title}")
+        from google_drive import find_file
+
         drive = drive_service(creds)
+        drive.bind_drive(shared_drive_id(drive, config.GOOGLE_DRIVE_FOLDER_ID))
+        public_folder = find_file(
+            drive, config.GOOGLE_DRIVE_FOLDER_ID,
+            "application/vnd.google-apps.folder", "public",
+        )
+        if not public_folder:
+            raise RuntimeError("public フォルダが見つかりません")
+        spreadsheet_id = config.GOOGLE_SPREADSHEET_ID or find_file(
+            drive, public_folder,
+            "application/vnd.google-apps.spreadsheet",
+        )
+        if not spreadsheet_id:
+            raise RuntimeError("public スプレッドシートが見つかりません")
+        ss = gc.open_by_key(spreadsheet_id)
+        ok(f"スプレッドシートを開けました: {ss.title}")
         folder = drive.files().get(
             fileId=config.GOOGLE_DRIVE_FOLDER_ID, fields="name"
         ).execute()
@@ -822,7 +851,10 @@ def main():
 
     run_google_auth(reauth=args.reauth, port=args.auth_port)
 
-    env = provision_google_resources(env, workspace, channels, args.parent)
+    try:
+        env = provision_google_resources(env, workspace, channels, args.parent)
+    except RuntimeError as e:
+        fail(f"保存先の準備に失敗しました: {e}")
     write_env(env)
 
     verify(env)
@@ -831,9 +863,11 @@ def main():
     print("  過去ログの取り込み:  python backfill.py --days 7")
     print("  リアルタイム収集:    python main.py")
     print()
-    print("\033[33m注意:\033[0m OAuth同意画面が「テスト中」のままだと、Google の仕様で")
-    print("  リフレッシュトークンが7日で失効します。継続運用する場合は")
-    print("  同意画面を「本番環境」に切り替えてください。")
+    print("\033[33m注意:\033[0m ユーザーの種類が「外部」で公開ステータスが「テスト中」だと、")
+    print("  Google の仕様でリフレッシュトークンが7日で失効します。継続運用する場合は")
+    print("  https://console.cloud.google.com/auth/audience で次のどちらかにしてください。")
+    print("  - Google Workspace 組織のプロジェクトで、組織のアカウントで認証した場合: 「内部に公開」")
+    print("  - それ以外: 「アプリを公開」で「本番環境」へ")
 
 
 if __name__ == "__main__":

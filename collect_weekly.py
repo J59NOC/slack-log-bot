@@ -9,6 +9,7 @@ Private channels → separate spreadsheet per channel (members only)
 
 Usage:
     python collect_weekly.py                    # Past 7 days, all channels
+    python collect_weekly.py --public            # Past 7 days, all public channels
     python collect_weekly.py --channel general  # Specific channel
     python collect_weekly.py --days 14          # Custom range (default: 8 for overlap margin)
 """
@@ -40,7 +41,9 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def collect(channel_filter: str | None = None, days: int = 8):
+def collect(
+    channel_filter: str | None = None, days: int = 8, public_only: bool = False
+):
     client = WebClient(token=config.SLACK_BOT_TOKEN)
     install_retry_handlers(client)
     sheets = SheetsHandler()
@@ -66,6 +69,12 @@ def collect(channel_filter: str | None = None, days: int = 8):
 
     channels = [ch for ch in channels if ch.get("is_member")]
 
+    if public_only:
+        channels = [
+            ch for ch in channels
+            if not (ch.get("is_private", False) or ch.get("is_group", False))
+        ]
+
     if channel_filter:
         channels = [ch for ch in channels if ch["name"] == channel_filter]
         if not channels:
@@ -82,6 +91,7 @@ def collect(channel_filter: str | None = None, days: int = 8):
         ch_name = ch["name"]
         ch_id = ch["id"]
         is_private = ch.get("is_private", False) or ch.get("is_group", False)
+        sheets.register_channel(ch_id, is_private)
 
         label = "private" if is_private else "public"
         logger.info(f"Collecting #{ch_name} [{label}] (past {days} days)...")
@@ -93,7 +103,9 @@ def collect(channel_filter: str | None = None, days: int = 8):
         member_emails = get_member_emails(client, ch_id)
         try:
             granted, _ = sheets.sync_channel_access(ch_name, member_emails, channel_id=ch_id)
-            granted += drive.sync_channel_access(ch_name, member_emails, channel_id=ch_id)[0]
+            granted += drive.sync_channel_access(
+                ch_name, member_emails, channel_id=ch_id, is_private=is_private
+            )[0]
             if granted:
                 logger.info(f"  #{ch_name}: shared with {granted} new member(s)")
         except Exception as e:
@@ -106,7 +118,7 @@ def collect(channel_filter: str | None = None, days: int = 8):
 
         collected = fetch_channel_messages(
             client, drive, ch_id, ch_name, oldest_ts, known_ts, member_emails,
-            skip_user_ids=bot_user_ids,
+            skip_user_ids=bot_user_ids, is_private=is_private,
         )
 
         # Phase 2: Write grouped by thread
@@ -127,9 +139,16 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Weekly Slack message collection")
     parser.add_argument("--channel", type=str, help="Channel name (default: all)")
     parser.add_argument(
+        "--public", action="store_true",
+        help="Collect all public channels the bot is in",
+    )
+    parser.add_argument(
         "--days", type=int, default=8,
         help="Days to look back (default: 8 = 7 days + 1 day overlap margin)"
     )
     args = parser.parse_args()
 
-    collect(channel_filter=args.channel, days=args.days)
+    if args.channel and args.public:
+        parser.error("--channel and --public cannot be used together")
+
+    collect(channel_filter=args.channel, days=args.days, public_only=args.public)

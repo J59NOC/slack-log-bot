@@ -17,7 +17,11 @@ import gspread
 
 import config
 from google_auth import load_credentials
-from google_drive import drive_service, shared_drive_id, sync_permissions
+from google_drive import (
+    PRIVATE_FOLDER_NAME, PUBLIC_FOLDER_NAME, drive_service, ensure_folder,
+    find_file, move_into_folder, shared_drive_id,
+    sync_permissions,
+)
 from sheet_guide import ensure_guide_sheet, write_channel_index
 
 logger = logging.getLogger(__name__)
@@ -243,17 +247,33 @@ class SheetsHandler:
         self.gc = gspread.authorize(creds)
         # Holds the guide and the channel index; message rows live in the
         # per-channel spreadsheets beside it.
-        self.index_spreadsheet = self.gc.open_by_key(config.GOOGLE_SPREADSHEET_ID)
         self._drive = drive_service(creds)
 
         self.drive_folder_id = config.GOOGLE_DRIVE_FOLDER_ID
-        # A shared drive answers "who can read this" on its own, so the
-        # per-channel sharing below stands down when the logs live in one.
         self.shared_drive_id = shared_drive_id(self._drive, self.drive_folder_id)
         self._drive.bind_drive(self.shared_drive_id)
+        self.public_folder_id = ensure_folder(
+            self._drive, PUBLIC_FOLDER_NAME, self.drive_folder_id
+        )
+        self.private_root_id = ensure_folder(
+            self._drive, PRIVATE_FOLDER_NAME, self.drive_folder_id
+        )
+        spreadsheet_id = config.GOOGLE_SPREADSHEET_ID or find_file(
+            self._drive, self.public_folder_id,
+            "application/vnd.google-apps.spreadsheet",
+        )
+        if spreadsheet_id:
+            self.index_spreadsheet = self.gc.open_by_key(spreadsheet_id)
+        else:
+            self.index_spreadsheet = self.gc.create(
+                "Slack ログ 索引", folder_id=self.public_folder_id
+            )
+            logger.info("Created public spreadsheet under the public folder")
+        move_into_folder(self._drive, self.index_spreadsheet.id, self.public_folder_id)
         self._sheet_cache: dict[str, gspread.Worksheet] = {}
         self._existing_ts: dict[str, set[str]] = {}
         self._channel_spreadsheets: dict[str, gspread.Spreadsheet] = {}
+        self._private_channel_ids: set[str] = set()
         self._index_entries: dict[str, str] = {}
         # Last author written per channel, so a run of messages from one
         # person is not ruled off in the middle when they arrive one by one.
@@ -270,8 +290,16 @@ class SheetsHandler:
         try:
             if ensure_guide_sheet(self.index_spreadsheet, bool(self.shared_drive_id)):
                 logger.info("Created guide sheet in the shared spreadsheet")
+            # The index is intentionally public-channel-only. Refreshing it at
+            # startup removes private-channel entries left by older versions.
+            write_channel_index(self.index_spreadsheet, {})
         except Exception as e:
             logger.warning(f"Could not create guide sheet: {e}")
+
+    def register_channel(self, channel_id: str, is_private: bool):
+        """Remember whether a channel needs a private spreadsheet."""
+        if is_private and channel_id:
+            self._private_channel_ids.add(channel_id)
 
     # ── Sheet formatting ──
 
@@ -1211,14 +1239,27 @@ class SheetsHandler:
         revoke: list[str] | None = None, channel_id: str = "",
     ) -> tuple[int, int]:
         """Match the channel spreadsheet's sharing to the channel's membership."""
+        is_private = channel_id in self._private_channel_ids
         ss = self._get_or_create_channel_spreadsheet(
             channel_name, member_emails, channel_id
         )
-        if self.shared_drive_id:
+        if self.shared_drive_id and not is_private:
             return (0, 0)
-        return sync_permissions(
-            self._drive, ss.id, member_emails, revoke, role="writer"
-        )
+        granted = revoked = 0
+        if not self.shared_drive_id:
+            granted, revoked = sync_permissions(
+                self._drive, ss.id, member_emails, revoke, role="writer"
+            )
+        if is_private:
+            folder_id = self._get_or_create_private_folder(
+                channel_name, channel_id, member_emails
+            )
+            folder_granted, folder_revoked = sync_permissions(
+                self._drive, folder_id, member_emails, revoke, role="reader"
+            )
+            granted += folder_granted
+            revoked += folder_revoked
+        return granted, revoked
 
     def _restrict_resharing(self, file_id: str):
         """Stop editors passing the file on.
@@ -1239,13 +1280,14 @@ class SheetsHandler:
         except Exception as e:
             logger.warning(f"Could not restrict re-sharing on {file_id}: {e}")
 
-    def _find_by_channel_id(self, channel_id: str) -> dict | None:
+    def _find_by_channel_id(self, channel_id: str, parent: str | None = None) -> dict | None:
         """The spreadsheet stamped with this channel id, if there is one."""
         if not channel_id:
             return None
+        parent = parent or self.public_folder_id
         query = (
             f"appProperties has {{ key='{CHANNEL_ID_PROPERTY}' and value='{channel_id}' }} "
-            f"and '{self.drive_folder_id}' in parents and trashed = false"
+            f"and '{parent}' in parents and trashed = false"
         )
         try:
             files = self._drive.files().list(
@@ -1256,9 +1298,10 @@ class SheetsHandler:
             return None
         return files[0] if files else None
 
-    def _find_by_name(self, name: str) -> dict | None:
+    def _find_by_name(self, name: str, parent: str | None = None) -> dict | None:
+        parent = parent or self.public_folder_id
         query = (
-            f"name = '{name}' and '{self.drive_folder_id}' in parents and "
+            f"name = '{name}' and '{parent}' in parents and "
             f"mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false"
         )
         files = self._drive.files().list(
@@ -1293,8 +1336,15 @@ class SheetsHandler:
         if channel_name in self._channel_spreadsheets:
             return self._channel_spreadsheets[channel_name]
 
+        if channel_id not in self._private_channel_ids:
+            self._channel_spreadsheets[channel_name] = self.index_spreadsheet
+            return self.index_spreadsheet
+
         ss_name = self._channel_spreadsheet_name(channel_name)
-        found = self._find_by_channel_id(channel_id)
+        folder_id = self._get_or_create_private_folder(
+            channel_name, channel_id, member_emails or []
+        )
+        found = self._find_by_channel_id(channel_id, folder_id)
         if found and found["name"] != ss_name:
             # The channel was renamed while nothing was watching.
             logger.info(f"Renaming {found['name']} -> {ss_name}")
@@ -1302,14 +1352,14 @@ class SheetsHandler:
 
         if not found:
             # Either a sheet from before ids were stamped, or a new channel.
-            found = self._find_by_name(ss_name)
+            found = self._find_by_name(ss_name, folder_id)
             if found and channel_id:
                 self._stamp_channel_id(found["id"], channel_id)
 
         if found:
             ss = self.gc.open_by_key(found["id"])
         else:
-            ss = self.gc.create(ss_name, folder_id=self.drive_folder_id)
+            ss = self.gc.create(ss_name, folder_id=folder_id)
             if channel_id:
                 self._stamp_channel_id(ss.id, channel_id)
             shared = self.share_with_members(ss, member_emails or [])
@@ -1319,41 +1369,53 @@ class SheetsHandler:
                     f"{ss_name} is not shared with anyone: no member email was "
                     f"resolvable. Check the users:read.email scope."
                 )
-            self._register_in_index(channel_name, ss)
-
         self._channel_spreadsheets[channel_name] = ss
         return ss
 
-    def _register_in_index(self, channel_name: str, spreadsheet: gspread.Spreadsheet):
-        """Record the channel's spreadsheet URL in the index."""
+    def _get_or_create_private_folder(
+        self, channel_name: str, channel_id: str, member_emails: list[str]
+    ) -> str:
+        """Create the private channel folder under the private parent folder."""
+        query = (
+            f"appProperties has {{ key='{CHANNEL_ID_PROPERTY}' and value='{channel_id}' }} "
+            f"and '{self.private_root_id}' in parents and "
+            f"mimeType = 'application/vnd.google-apps.folder' and trashed = false"
+        )
+        found = self._drive.files().list(
+            q=query, fields="files(id, name)", pageSize=1
+        ).execute().get("files", [])
+        if found:
+            folder_id = found[0]["id"]
+        else:
+            folder = self._drive.files().create(
+                body={
+                    "name": f"#{channel_name}",
+                    "mimeType": "application/vnd.google-apps.folder",
+                    "parents": [self.private_root_id],
+                    "appProperties": {CHANNEL_ID_PROPERTY: channel_id},
+                },
+                fields="id",
+            ).execute()
+            folder_id = folder["id"]
+            logger.info(f"Created private channel folder: #{channel_name}")
+
+        sync_permissions(self._drive, folder_id, member_emails, role="reader")
+
+        return folder_id
+
+    def _register_in_index(
+        self, channel_name: str, spreadsheet: gspread.Spreadsheet, worksheet_id: int
+    ):
+        """Record a public channel's tab URL in the index."""
         try:
-            self._index_entries[channel_name] = spreadsheet.url
+            self._index_entries[channel_name] = f"{spreadsheet.url}#gid={worksheet_id}"
             write_channel_index(self.index_spreadsheet, self._collect_index_entries())
         except Exception as e:
             logger.warning(f"Could not update the channel index: {e}")
 
     def _collect_index_entries(self) -> dict[str, str]:
-        """Every channel spreadsheet in the Drive folder, by channel name."""
-        entries = dict(self._index_entries)
-        try:
-            query = (
-                f"'{self.drive_folder_id}' in parents and "
-                f"mimeType = 'application/vnd.google-apps.spreadsheet' and "
-                f"trashed = false"
-            )
-            found = self._drive.files().list(
-                q=query, fields="files(id, name)", pageSize=1000
-            ).execute().get("files", [])
-            for meta in found:
-                if not meta["name"].startswith("Slack Log - #"):
-                    continue
-                name = meta["name"][len("Slack Log - #"):]
-                entries.setdefault(
-                    name, f"https://docs.google.com/spreadsheets/d/{meta['id']}/edit"
-                )
-        except Exception as e:
-            logger.warning(f"Could not list channel spreadsheets: {e}")
-        return entries
+        """Public-channel entries currently discovered in this process."""
+        return dict(self._index_entries)
 
     def _get_or_create_channel_sheet(
         self, channel_name: str, member_emails: list[str] | None = None,
@@ -1369,8 +1431,13 @@ class SheetsHandler:
         try:
             worksheet = ss.worksheet(channel_name)
         except gspread.exceptions.WorksheetNotFound:
-            worksheet = ss.sheet1
-            _retry(worksheet.update_title, channel_name, idempotent=False)
+            if ss is self.index_spreadsheet:
+                worksheet = ss.add_worksheet(
+                    title=channel_name, rows=1000, cols=len(HEADER_ROW)
+                )
+            else:
+                worksheet = ss.sheet1
+                _retry(worksheet.update_title, channel_name, idempotent=False)
 
         is_new = False
         if worksheet.row_count == 0 or not _retry(worksheet.row_values, 1):
@@ -1380,6 +1447,9 @@ class SheetsHandler:
         if is_new or channel_name not in self._formatted_sheets:
             self._format_sheet(worksheet, ss)
             self._formatted_sheets.add(channel_name)
+
+        if channel_name not in self._private_channel_ids:
+            self._register_in_index(channel_name, ss, worksheet.id)
 
         self._sheet_cache[channel_name] = worksheet
         return worksheet
@@ -1481,10 +1551,38 @@ class SheetsHandler:
             worksheet = self._get_worksheet(channel_name, member_emails, channel_id)
             return set(self._load_existing_ts(channel_name, worksheet))
 
-    def rename_channel(self, channel_id: str, new_name: str) -> bool:
+    def rename_channel(
+        self, channel_id: str, new_name: str, previous_name: str = ""
+    ) -> bool:
         """Follow a channel rename so its history stays in one spreadsheet."""
         with self._lock:
+            if channel_id not in self._private_channel_ids:
+                if not previous_name:
+                    return False
+                try:
+                    worksheet = self.index_spreadsheet.worksheet(previous_name)
+                    _retry(worksheet.update_title, new_name, idempotent=False)
+                    self._clear_cache_locked()
+                    logger.info(f"Renamed public channel tab to #{new_name}")
+                    return True
+                except gspread.exceptions.WorksheetNotFound:
+                    return False
+                except Exception as e:
+                    logger.warning(f"Could not rename public channel tab: {e}")
+                    return False
+
             found = self._find_by_channel_id(channel_id)
+            if not found:
+                folders = self._drive.files().list(
+                    q=(
+                        f"appProperties has {{ key='{CHANNEL_ID_PROPERTY}' and value='{channel_id}' }} "
+                        f"and '{self.private_root_id}' in parents and "
+                        "mimeType = 'application/vnd.google-apps.folder' and trashed = false"
+                    ),
+                    fields="files(id)", pageSize=1,
+                ).execute().get("files", [])
+                if folders:
+                    found = self._find_by_channel_id(channel_id, folders[0]["id"])
             if not found:
                 return False
             new_title = self._channel_spreadsheet_name(new_name)
@@ -1509,17 +1607,34 @@ class SheetsHandler:
 
     def get_spreadsheet_url(self, channel_name: str) -> str | None:
         """Return the spreadsheet URL for a channel, or None if it has none yet."""
+        if channel_name not in self._private_channel_ids:
+            try:
+                worksheet = self.index_spreadsheet.worksheet(channel_name)
+                return f"{self.index_spreadsheet.url}#gid={worksheet.id}"
+            except gspread.exceptions.WorksheetNotFound:
+                return None
+
         if channel_name in self._channel_spreadsheets:
             return self._channel_spreadsheets[channel_name].url
-        query = (
-            f"name = '{self._channel_spreadsheet_name(channel_name)}' and "
-            f"'{self.drive_folder_id}' in parents and "
-            f"mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false"
-        )
         try:
-            files = self._drive.files().list(
-                q=query, fields="files(id)", pageSize=1
-            ).execute().get("files", [])
+            files = []
+            for folder in self._drive.files().list(
+                q=(
+                    f"'{self.private_root_id}' in parents and "
+                    "mimeType = 'application/vnd.google-apps.folder' and trashed = false"
+                ),
+                fields="files(id)", pageSize=1000,
+            ).execute().get("files", []):
+                files = self._drive.files().list(
+                    q=(
+                        f"name = '{self._channel_spreadsheet_name(channel_name)}' and "
+                        f"'{folder['id']}' in parents and "
+                        "mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false"
+                    ),
+                    fields="files(id)", pageSize=1,
+                ).execute().get("files", [])
+                if files:
+                    break
         except Exception as e:
             logger.warning(f"Could not look up the sheet for #{channel_name}: {e}")
             return None
