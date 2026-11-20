@@ -63,6 +63,8 @@ slack_log_bot/
 ├── slack-app-manifest.yml # Slack Appマニフェスト（貼るだけでApp設定完了）
 ├── requirements.txt      # Python依存パッケージ
 ├── .env.example          # 環境変数テンプレート
+├── Dockerfile            # コンテナイメージ
+├── compose.yaml          # Docker Compose（1サービス = 1 bot）
 ├── deploy/
 │   ├── systemd/          # 複数bot用のテンプレートユニット（slack-log-bot@<名前>）
 │   └── raspi/            # Raspberry Pi の cloud-init 一式
@@ -682,6 +684,70 @@ Google スプレッドシートを開いて、メッセージが記録されて�
 ---
 
 ## 運用方法
+
+### Docker で動かす
+
+Docker（Compose v2）が動くサーバーで常駐させる方法です。Socket Mode なので、
+サーバー側でポートを開ける必要はありません。
+
+認証情報はイメージに入れず、`profiles/<名前>/` をコンテナにマウントして渡します。
+実行時に必要なのは `.env` と `drive_token.json` の2つだけです（`client_secret.json` は
+`setup.py` で認証するときにしか使いません）。
+
+**1. 手元の PC でセットアップする**
+
+ブラウザでの Google 認証が必要なので、`setup.py` は手元で実行します。
+
+```bash
+uv run python setup.py --profile private
+```
+
+`profiles/private/.env` と `profiles/private/drive_token.json` ができます。
+
+**2. サーバーに配置して起動する**
+
+```bash
+git clone https://github.com/J59NOC/slack-log-bot.git
+cd slack-log-bot
+# 手元から profiles/private/ をコピーする（例）
+#   scp -r profiles/private server:~/slack-log-bot/profiles/
+chmod 700 profiles profiles/private && chmod 600 profiles/private/*
+
+UID=$(id -u) GID=$(id -g) docker compose up -d --build
+docker compose logs -f
+```
+
+コンテナは `profiles/` 以外を読み取り専用で動かします。Google のトークンを更新したときは
+`drive_token.json` に書き戻すので、コンテナはホストのユーザーと同じ UID で動かします
+（`UID`/`GID` を渡さない場合は 1000:1000）。
+
+サービス名（`private`）がプロファイル名です。bot を増やすときは、`compose.yaml` の
+`private` を複製して、サービス名と `SLACK_LOG_PROFILE` を変えてください。
+
+> **同じ bot を2箇所で同時に動かさないでください。** サーバーで起動したら、
+> 手元や他のマシンで動かしていた `main.py` は止めます。
+
+**週次収集・バックフィル**
+
+```bash
+# 週次収集（cron などで定期実行する）
+docker compose run --rm private python collect_weekly.py
+# 過去分の取り込み
+docker compose run --rm private python backfill.py --days 14
+```
+
+cron の例（毎週月曜 9:00）:
+
+```cron
+0 9 * * 1  cd /path/to/slack-log-bot && UID=1000 GID=1000 docker compose run --rm private python collect_weekly.py >> collect_weekly.log 2>&1
+```
+
+**更新**
+
+```bash
+git pull
+UID=$(id -u) GID=$(id -g) docker compose up -d --build
+```
 
 ### A. リアルタイム収集
 
