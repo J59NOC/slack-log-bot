@@ -124,6 +124,41 @@ COLOR_AUTHOR_RULE = {"red": 0.75, "green": 0.75, "blue": 0.75}  # #bfbfbf
 # Drive ids as they appear in an attachment link
 DRIVE_ID_PATTERN = re.compile(r"/d/([A-Za-z0-9_-]{20,})|[?&]id=([A-Za-z0-9_-]{20,})")
 
+# Sheets API でセル（CellData）を読むとき、添付のリンクが入りうる場所
+ATTACHMENT_LINK_FIELDS = (
+    "formattedValue,textFormatRuns/format/link/uri,userEnteredFormat/textFormat/link/uri"
+)
+
+
+def drive_ids_in_cell(value: dict) -> list[str]:
+    """Drive ids that one attachment cell points at, in the order they appear.
+
+    Both spellings are read. Rows written before file names became links
+    hold the URL as text; newer ones hold it only in the cell's rich text,
+    where the displayed value (col_values) shows just the file names.
+
+    value は Sheets API の CellData（ATTACHMENT_LINK_FIELDS を取ったもの）。
+    """
+    uris = [
+        run.get("format", {}).get("link", {}).get("uri", "")
+        for run in value.get("textFormatRuns", [])
+    ]
+    # Sheets folds a run spanning the whole string into the cell's own
+    # format and then reports no runs, so a single attachment lands here.
+    uris.append(
+        value.get("userEnteredFormat", {}).get("textFormat", {}).get("link", {}).get("uri", "")
+    )
+    uris.append(value.get("formattedValue", ""))
+
+    ids: list[str] = []
+    for uri in uris:
+        for match in DRIVE_ID_PATTERN.finditer(uri or ""):
+            file_id = match.group(1) or match.group(2)
+            if file_id not in ids:
+                ids.append(file_id)
+    return ids
+
+
 JST = timezone(timedelta(hours=9))
 
 # Collapsing an outline group only hides the rows; Sheets shows nothing in
@@ -204,6 +239,11 @@ def build_row(entry: LogEntry) -> list[str]:
     ]
 
 
+# チャンネル専用スプレッドシートの名前の頭。以前の構成では public channel も
+# これでルート直下に置いていた
+CHANNEL_SPREADSHEET_PREFIX = "Slack Log - #"
+
+
 def channel_spreadsheet_name(channel_name: str) -> str:
     """プライベートチャンネルのスプレッドシートの名前。"""
-    return f"Slack Log - #{channel_name}"
+    return f"{CHANNEL_SPREADSHEET_PREFIX}{channel_name}"

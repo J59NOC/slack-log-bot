@@ -17,6 +17,8 @@ from src.infrastructure.google.drive import (
     PRIVATE_FOLDER_NAME,
     PUBLIC_FOLDER_NAME,
     ensure_folder,
+    find_file,
+    list_children,
     shared_drive_id,
     sync_permissions,
 )
@@ -26,6 +28,39 @@ if TYPE_CHECKING:
     from src.infrastructure.google.drive import DriveService
 
 logger = logging.getLogger(__name__)
+
+
+def attachment_folders(drive: DriveService, root_folder_id: str) -> list[dict]:
+    """Every channel folder under the storage folder that holds attachments.
+
+    public/添付ファイル/#チャンネル/、private/#チャンネル/、それに以前の構成の
+    添付ファイル/#チャンネル/（ルート直下）。name は "private/#hoge" のように、
+    どこのフォルダか分かる形にして返す。
+
+    Nothing is created, and a failed call is raised rather than skipped.
+    """
+
+    def folder(parent_id: str | None, name: str) -> str | None:
+        return find_file(drive, parent_id, FOLDER_MIME, name) if parent_id else None
+
+    public_id = folder(root_folder_id, PUBLIC_FOLDER_NAME)
+    places = [
+        (ATTACHMENTS_FOLDER_NAME, folder(root_folder_id, ATTACHMENTS_FOLDER_NAME)),
+        (
+            f"{PUBLIC_FOLDER_NAME}/{ATTACHMENTS_FOLDER_NAME}",
+            folder(public_id, ATTACHMENTS_FOLDER_NAME),
+        ),
+        (PRIVATE_FOLDER_NAME, folder(root_folder_id, PRIVATE_FOLDER_NAME)),
+    ]
+
+    folders = []
+    for label, parent_id in places:
+        if parent_id:
+            folders += [
+                {"id": f["id"], "name": f"{label}/{f['name']}"}
+                for f in list_children(drive, parent_id, FOLDER_MIME)
+            ]
+    return folders
 
 
 class DriveAttachmentStore:

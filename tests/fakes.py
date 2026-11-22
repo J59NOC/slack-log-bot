@@ -154,8 +154,7 @@ class _Files:
 
         def run() -> dict:
             keys = ["id", "name"]
-            if "appProperties" in kw.get("fields", ""):
-                keys.append("appProperties")
+            keys += [k for k in ("mimeType", "appProperties") if k in kw.get("fields", "")]
             found = [
                 {k: copy.deepcopy(f[k]) for k in keys}
                 for f in self.w.files.values()
@@ -616,16 +615,28 @@ class _FakeHttpClient:
                     }
                 ]
             }
+        elif re.fullmatch(r"([A-Z]+):\1", a1):
+            # 列まるごと（例: D:D）
+            _, col = _a1_cell(a1.split(":")[0] + "1")
+            rows = [{"values": [_cell_data(ws, r, col)]} for r in range(1, len(ws.values) + 1)]
+            payload = {"sheets": [{"data": [{"rowData": rows}]}]}
         else:
             row, col = _a1_cell(a1)
-            text = ""
-            if len(ws.values) >= row and len(ws.values[row - 1]) >= col:
-                text = ws.values[row - 1][col - 1]
-            value = {"formattedValue": text}
-            if (row, col) in ws.runs:
-                value["textFormatRuns"] = ws.runs[(row, col)]
-            payload = {"sheets": [{"data": [{"rowData": [{"values": [value]}]}]}]}
+            payload = {
+                "sheets": [{"data": [{"rowData": [{"values": [_cell_data(ws, row, col)]}]}]}]
+            }
         return SimpleNamespace(json=lambda: payload)
+
+
+def _cell_data(ws: FakeWorksheet, row: int, col: int) -> dict:
+    """Sheets API の CellData（表示値と、リンクの入ったリッチテキスト）。"""
+    text = ""
+    if len(ws.values) >= row and len(ws.values[row - 1]) >= col:
+        text = ws.values[row - 1][col - 1]
+    value: dict = {"formattedValue": text}
+    if (row, col) in ws.runs:
+        value["textFormatRuns"] = ws.runs[(row, col)]
+    return value
 
 
 class FakeGspread:

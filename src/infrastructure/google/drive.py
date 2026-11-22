@@ -172,6 +172,17 @@ def find_file(service: DriveService, parent_id: str, mime_type: str, name: str =
         raise RuntimeError(msg) from e
 
 
+def list_children(service: DriveService, parent_id: str, mime_type: str) -> list[dict]:
+    """Every direct child of one kind (id and name). A failed call is raised."""
+    query = f"'{parent_id}' in parents and mimeType = '{mime_type}' and trashed = false"
+    return (
+        service.files()
+        .list(q=query, fields="files(id, name)", pageSize=1000)
+        .execute()
+        .get("files", [])
+    )
+
+
 def move_into_folder(service: DriveService, file_id: str, folder_id: str) -> bool:
     """Move a file into folder_id without changing its id."""
     try:

@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import argparse
 import logging
-import re
 import sys
 from collections import defaultdict
 from pathlib import Path
@@ -29,14 +28,13 @@ import gspread
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from src.infrastructure.google.attachment_store import attachment_folders
 from src.infrastructure.google.auth import load_credentials
-from src.infrastructure.google.drive import (
-    ATTACHMENTS_FOLDER_NAME,
-    FOLDER_MIME,
-    drive_service,
-)
+from src.infrastructure.google.drive import drive_service, shared_drive_id
 from src.infrastructure.google.sheets.layout import ATTACHMENT_COLUMN
+from src.infrastructure.google.sheets.repository import attachment_file_ids
 from src.infrastructure.google.sheets.retry import retry as _retry
+from src.infrastructure.google.sheets.workbooks import log_spreadsheet_files
 from src.infrastructure.settings import load_settings
 
 if TYPE_CHECKING:
@@ -45,10 +43,12 @@ if TYPE_CHECKING:
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger(__name__)
 
-DRIVE_ID_PATTERN = re.compile(r"/d/([A-Za-z0-9_-]{20,})|[?&]id=([A-Za-z0-9_-]{20,})")
-
 # フォルダごとに、重複の多いファイル名をいくつまで表示するか
 SHOWN_NAMES = 8
+
+# Google のスプレッドシートやフォルダ。bot がアップロードした添付ではない
+# （private/#チャンネル/ には、そのチャンネルのスプレッドシートも入っている）
+GOOGLE_APPS_MIME_PREFIX = "application/vnd.google-apps."
 
 
 class IncompleteScanError(RuntimeError):
@@ -58,23 +58,23 @@ class IncompleteScanError(RuntimeError):
 def linked_file_ids(gc: gspread.Client, drive: DriveService, root_folder_id: str) -> set[str]:
     """Collect every Drive file id referenced from the bot's spreadsheets.
 
-    Only the attachment column is read. Message bodies can contain Drive URLs
-    a person pasted into Slack, which have nothing to do with the uploads.
+    Only the attachment column is read, links and text alike. Message bodies
+    can contain Drive URLs a person pasted into Slack, which have nothing to do
+    with the uploads.
 
     Any failure aborts. Deciding what to delete from a partial picture is how
     a rate-limited read turns into a deleted file that a sheet still links to.
     """
     ids: set[str] = set()
-    query = (
-        f"'{root_folder_id}' in parents and "
-        f"mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false"
-    )
-    sheets = (
-        drive.files()
-        .list(q=query, fields="files(id, name)", pageSize=1000)
-        .execute()
-        .get("files", [])
-    )
+    try:
+        sheets = log_spreadsheet_files(drive, root_folder_id)
+    except Exception as e:
+        msg = (
+            f"スプレッドシートの一覧を取得できませんでした: {e}\n"
+            f"  参照中のファイルを取り違える恐れがあるため中断します。"
+            f"時間をおいて再実行してください。"
+        )
+        raise IncompleteScanError(msg) from e
 
     for meta in sheets:
         try:
@@ -84,9 +84,8 @@ def linked_file_ids(gc: gspread.Client, drive: DriveService, root_folder_id: str
                 # is out of range rather than empty.
                 if worksheet.col_count < ATTACHMENT_COLUMN:
                     continue
-                for cell in _retry(worksheet.col_values, ATTACHMENT_COLUMN):
-                    for match in DRIVE_ID_PATTERN.finditer(cell):
-                        ids.add(match.group(1) or match.group(2))
+                # セルの表示はファイル名で、リンク先はリッチテキストにしか無い
+                ids |= attachment_file_ids(gc, spreadsheet.id, worksheet.title)
         except Exception as e:
             msg = (
                 f"{meta['name']} を読めませんでした: {e}\n"
@@ -95,42 +94,16 @@ def linked_file_ids(gc: gspread.Client, drive: DriveService, root_folder_id: str
             )
             raise IncompleteScanError(msg) from e
 
-    logger.info("スプレッドシートから参照されているファイル: %s 件", len(ids))
+    logger.info("スプレッドシート %s 件から参照されているファイル: %s 件", len(sheets), len(ids))
     return ids
 
 
-def channel_folders(drive: DriveService, root_folder_id: str) -> list[dict]:
-    """添付ファイルの、チャンネルごとのフォルダ。"""
-    attachments = (
-        drive.files()
-        .list(
-            q=f"name = '{ATTACHMENTS_FOLDER_NAME}' and '{root_folder_id}' in parents "
-            f"and mimeType = '{FOLDER_MIME}' and trashed = false",
-            fields="files(id, name)",
-            pageSize=1,
-        )
-        .execute()
-        .get("files", [])
-    )
-    if not attachments:
-        return []
-    return (
-        drive.files()
-        .list(
-            q=f"'{attachments[0]['id']}' in parents and mimeType = '{FOLDER_MIME}' "
-            f"and trashed = false",
-            fields="files(id, name)",
-            pageSize=1000,
-        )
-        .execute()
-        .get("files", [])
-    )
-
-
 def removable_copies(files: list[dict], linked: set[str]) -> list[dict]:
-    """同じ名前のファイルのうち、消してよい複製。"""
+    """同じ名前のファイルのうち、消してよい複製。Google のファイルは対象にしない。"""
     by_name: dict[str, list[dict]] = defaultdict(list)
     for f in files:
+        if f.get("mimeType", "").startswith(GOOGLE_APPS_MIME_PREFIX):
+            continue
         by_name[f["name"]].append(f)
 
     removable: list[dict] = []
@@ -190,6 +163,8 @@ def main() -> int:
     drive = drive_service(creds)
     gc = gspread.authorize(creds)
     root = settings.google_drive_folder_id
+    # 共有ドライブなら、その中を検索するよう指定する（しないと一覧が空になりうる）
+    drive.bind_drive(shared_drive_id(drive, root))
 
     try:
         linked = linked_file_ids(gc, drive, root)
@@ -197,7 +172,11 @@ def main() -> int:
         logger.error("中断: %s", e)
         return 1
 
-    folders = channel_folders(drive, root)
+    try:
+        folders = attachment_folders(drive, root)
+    except Exception as e:
+        logger.error("中断: 添付フォルダの一覧を取得できませんでした: %s", e)
+        return 1
     if not folders:
         logger.info("添付フォルダが見つかりません。")
         return 0
@@ -210,7 +189,7 @@ def main() -> int:
             drive.files()
             .list(
                 q=f"'{folder['id']}' in parents and trashed = false",
-                fields="files(id, name, size, createdTime)",
+                fields="files(id, name, mimeType, size, createdTime)",
                 orderBy="createdTime",
                 pageSize=1000,
             )

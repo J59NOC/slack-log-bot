@@ -16,21 +16,33 @@ import gspread
 from src.domain.people import AccessChange
 from src.infrastructure.google.drive import (
     CHANNEL_ID_PROPERTY,
+    FOLDER_MIME,
     PRIVATE_FOLDER_NAME,
     PUBLIC_FOLDER_NAME,
     ensure_folder,
     find_file,
+    list_children,
     move_into_folder,
     shared_drive_id,
     sync_permissions,
 )
+from src.infrastructure.google.sheets.colors import COLOR_SHEET_TITLE
 from src.infrastructure.google.sheets.formatting import apply_sheet_format
-from src.infrastructure.google.sheets.guide import ensure_guide_sheet, write_channel_index
-from src.infrastructure.google.sheets.layout import HEADER_ROW, channel_spreadsheet_name
+from src.infrastructure.google.sheets.guide import (
+    GUIDE_SHEET_TITLE,
+    INDEX_SHEET_TITLE,
+    ensure_guide_sheet,
+    write_channel_index,
+)
+from src.infrastructure.google.sheets.layout import (
+    CHANNEL_SPREADSHEET_PREFIX,
+    HEADER_ROW,
+    channel_spreadsheet_name,
+)
 from src.infrastructure.google.sheets.retry import retry
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
 
     from src.domain.channel import Channel
     from src.infrastructure.google.drive import DriveService
@@ -38,6 +50,36 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 SPREADSHEET_MIME = "application/vnd.google-apps.spreadsheet"
+
+# 索引スプレッドシートにある、ログではない bot のタブ
+BOT_TABS = (GUIDE_SHEET_TITLE, INDEX_SHEET_TITLE, COLOR_SHEET_TITLE)
+
+
+def log_spreadsheet_files(drive: DriveService, root_folder_id: str) -> list[dict]:
+    """Every spreadsheet under the storage folder that holds log rows (id and name).
+
+    - public/ の索引スプレッドシート（public channel のタブを持つ）
+    - private/#チャンネル/ の専用スプレッドシート
+    - 以前の構成でルート直下に置いていた「Slack Log - #」のスプレッドシート
+
+    Nothing is created: a maintenance script looking at an empty storage folder
+    must not leave new folders behind. A failed call is raised rather than
+    skipped, because a caller deciding what is still referenced from a partial
+    list could throw away a file that a sheet links to.
+    """
+    files = [
+        f
+        for f in list_children(drive, root_folder_id, SPREADSHEET_MIME)
+        if f["name"].startswith(CHANNEL_SPREADSHEET_PREFIX)
+    ]
+    public_id = find_file(drive, root_folder_id, FOLDER_MIME, PUBLIC_FOLDER_NAME)
+    if public_id:
+        files += list_children(drive, public_id, SPREADSHEET_MIME)
+    private_id = find_file(drive, root_folder_id, FOLDER_MIME, PRIVATE_FOLDER_NAME)
+    if private_id:
+        for folder in list_children(drive, private_id, FOLDER_MIME):
+            files += list_children(drive, folder["id"], SPREADSHEET_MIME)
+    return files
 
 
 @dataclass(frozen=True)
@@ -394,29 +436,40 @@ class ChannelWorkbooks:
             self._formatted_sheets.clear()
 
     def each_channel_sheet(self) -> Iterator[tuple[gspread.Spreadsheet, gspread.Worksheet]]:
-        """Every channel spreadsheet in the folder, with its first worksheet."""
-        query = (
-            f"'{self.drive_folder_id}' in parents and "
-            f"mimeType = '{SPREADSHEET_MIME}' and trashed = false"
-        )
+        """Every tab that may hold a channel's log, with its spreadsheet.
+
+        public channel は索引のタブ、private channel は private/#チャンネル/ の
+        スプレッドシート、それに以前の構成でルート直下にあったスプレッドシート。
+        bot 自身の説明・一覧・色のタブは除く。手で足されたタブは混ざりうるので、
+        使う側が見出しで確かめること。
+        """
+        # The index is already open, and is read even if the listing fails.
+        yield from self._log_tabs(self.index_spreadsheet.title, lambda: self.index_spreadsheet)
+
         try:
-            files = (
-                self._drive.files()
-                .list(q=query, fields="files(id, name)", pageSize=1000)
-                .execute()
-                .get("files", [])
-            )
+            files = log_spreadsheet_files(self._drive, self.drive_folder_id)
         except Exception as e:
             logger.warning("Could not list channel spreadsheets: %s", e)
             return
         for meta in files:
-            if not meta["name"].startswith("Slack Log - #"):
+            if meta["id"] == self.index_spreadsheet.id:
                 continue
-            try:
-                spreadsheet = self.gc.open_by_key(meta["id"])
-                yield spreadsheet, spreadsheet.sheet1
-            except Exception as e:
-                logger.warning("Could not open %s: %s", meta["name"], e)
+            yield from self._log_tabs(meta["name"], lambda m=meta: self.gc.open_by_key(m["id"]))
+
+    @staticmethod
+    def _log_tabs(
+        name: str, open_spreadsheet: Callable[[], gspread.Spreadsheet]
+    ) -> Iterator[tuple[gspread.Spreadsheet, gspread.Worksheet]]:
+        """スプレッドシートを開き、ログ以外の bot のタブを除いて返す。開けなければ何も返さない。"""
+        try:
+            spreadsheet = open_spreadsheet()
+            worksheets = retry(spreadsheet.worksheets)
+        except Exception as e:
+            logger.warning("Could not open %s: %s", name, e)
+            return
+        for worksheet in worksheets:
+            if worksheet.title not in BOT_TABS:
+                yield spreadsheet, worksheet
 
     # ── 改名・URL ──
 

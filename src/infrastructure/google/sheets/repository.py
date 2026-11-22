@@ -24,7 +24,8 @@ from src.infrastructure.google.sheets.formatting import (
 )
 from src.infrastructure.google.sheets.layout import (
     ATTACHMENT_COLUMN,
-    DRIVE_ID_PATTERN,
+    ATTACHMENT_LINK_FIELDS,
+    HEADER_ROW,
     MESSAGE_COLUMN,
     REPLY_COUNT_PATTERN,
     THREAD_TS_COLUMN,
@@ -34,6 +35,7 @@ from src.infrastructure.google.sheets.layout import (
     build_row,
     column_letter,
     display_text,
+    drive_ids_in_cell,
     ts_to_datetime,
 )
 from src.infrastructure.google.sheets.retry import retry
@@ -48,6 +50,32 @@ if TYPE_CHECKING:
     from src.infrastructure.google.sheets.workbooks import ChannelWorkbooks
 
 logger = logging.getLogger(__name__)
+
+
+def attachment_file_ids(gc: gspread.Client, spreadsheet_id: str, worksheet_title: str) -> set[str]:
+    """Drive ids that a tab's whole attachment column points at, in either spelling.
+
+    The displayed values (col_values) hold only file names now, so the links
+    are read from the cells' rich text. A failed read is raised rather than
+    swallowed: a caller deciding what is no longer referenced must not take a
+    short read for an unreferenced file.
+    """
+    column = column_letter(ATTACHMENT_COLUMN)
+    response = retry(
+        gc.http_client.request,
+        "get",
+        f"https://sheets.googleapis.com/v4/spreadsheets/{spreadsheet_id}",
+        params={
+            "ranges": f"'{worksheet_title}'!{column}:{column}",
+            "fields": f"sheets/data/rowData/values({ATTACHMENT_LINK_FIELDS})",
+        },
+    ).json()
+    ids: set[str] = set()
+    for data in response["sheets"][0].get("data", []):
+        for row in data.get("rowData", []):
+            for value in row.get("values", []):
+                ids.update(drive_ids_in_cell(value))
+    return ids
 
 
 class SheetsChannelLog:
@@ -495,11 +523,7 @@ class SheetsChannelLog:
     def _linked_file_ids(
         self, spreadsheet: gspread.Spreadsheet, worksheet: gspread.Worksheet, row_number: int
     ) -> list[str]:
-        """Drive ids that one row's attachment cell points at.
-
-        Both spellings are read. Rows written before file names became links
-        hold the URL as text; newer ones hold it only in the cell's rich text,
-        where col_values cannot see it at all.
+        """Drive ids that one row's attachment cell points at (see drive_ids_in_cell).
 
         Returns [] on any failure, which leaves the files alone. An attachment
         left behind is untidy; one thrown away because a read came back short
@@ -513,40 +537,14 @@ class SheetsChannelLog:
                 f"https://sheets.googleapis.com/v4/spreadsheets/{spreadsheet.id}",
                 params={
                     "ranges": f"'{worksheet.title}'!{cell}",
-                    "fields": (
-                        "sheets/data/rowData/values("
-                        "formattedValue,"
-                        "textFormatRuns/format/link/uri,"
-                        "userEnteredFormat/textFormat/link/uri)"
-                    ),
+                    "fields": f"sheets/data/rowData/values({ATTACHMENT_LINK_FIELDS})",
                 },
             ).json()
             values = response["sheets"][0]["data"][0].get("rowData", [{}])[0].get("values", [])
         except Exception as e:
             logger.warning("Could not read the attachments on row %s: %s", row_number, e)
             return []
-        if not values:
-            return []
-
-        value = values[0]
-        uris = [
-            run.get("format", {}).get("link", {}).get("uri", "")
-            for run in value.get("textFormatRuns", [])
-        ]
-        # Sheets folds a run spanning the whole string into the cell's own
-        # format and then reports no runs, so a single attachment lands here.
-        uris.append(
-            value.get("userEnteredFormat", {}).get("textFormat", {}).get("link", {}).get("uri", "")
-        )
-        uris.append(value.get("formattedValue", ""))
-
-        ids = []
-        for uri in uris:
-            for match in DRIVE_ID_PATTERN.finditer(uri or ""):
-                file_id = match.group(1) or match.group(2)
-                if file_id not in ids:
-                    ids.append(file_id)
-        return ids
+        return drive_ids_in_cell(values[0]) if values else []
 
     def _half_open_group_requests(
         self, worksheet: gspread.Worksheet, spreadsheet: gspread.Spreadsheet
@@ -676,6 +674,10 @@ class SheetsChannelLog:
                     names = retry(worksheet.col_values, USERNAME_COLUMN)
                 except Exception as e:
                     logger.warning("Could not read names in %s: %s", spreadsheet.title, e)
+                    continue
+                # A tab someone added by hand can share the spreadsheet with the
+                # logs; its second column is not a list of authors.
+                if not names or names[0] != HEADER_ROW[USERNAME_COLUMN - 1]:
                     continue
                 rows = [i + 1 for i, name in enumerate(names) if i and name == old_name]
                 if not rows:

@@ -31,10 +31,11 @@ if __package__ in (None, ""):
 
 from src.domain.log_entry import Attachment
 from src.infrastructure.google.auth import load_credentials
-from src.infrastructure.google.drive import drive_service
+from src.infrastructure.google.drive import drive_service, shared_drive_id
 from src.infrastructure.google.sheets.formatting import attachment_cell_request
 from src.infrastructure.google.sheets.layout import ATTACHMENT_COLUMN, HEADER_ROW
 from src.infrastructure.google.sheets.retry import retry as _retry
+from src.infrastructure.google.sheets.workbooks import log_spreadsheet_files
 from src.infrastructure.settings import load_settings
 
 if TYPE_CHECKING:
@@ -144,22 +145,14 @@ def main() -> int:
     creds = load_credentials()
     gc = gspread.authorize(creds)
     drive = drive_service(creds)
+    root = settings.google_drive_folder_id
+    # 共有ドライブなら、その中を検索するよう指定する（しないと一覧が空になりうる）
+    drive.bind_drive(shared_drive_id(drive, root))
 
-    query = (
-        f"'{settings.google_drive_folder_id}' in parents and "
-        f"mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false"
-    )
-    files = (
-        drive.files()
-        .list(q=query, fields="files(id, name)", pageSize=1000)
-        .execute()
-        .get("files", [])
-    )
+    files = log_spreadsheet_files(drive, root)
 
     total_rows = 0
     for meta in sorted(files, key=lambda f: f["name"]):
-        if not meta["name"].startswith("Slack Log - #"):
-            continue
         spreadsheet = gc.open_by_key(meta["id"])
         for worksheet in _retry(spreadsheet.worksheets):
             total_rows += _process_worksheet(
