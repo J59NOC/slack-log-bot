@@ -29,13 +29,36 @@ SECTION_PREFIX = "▍"
 
 # Who can read the logs depends on where they are kept, and the sheet should
 # not claim the wrong one. Inserted after the line about the index tab.
+WHY_PRIVATE_IS_SEPARATE = (
+    "",
+    (
+        "（Google スプレッドシートはタブ単位で権限を分けられないため、"
+        "private channel はファイルを分けています）"
+    ),
+)
 SHARING_ROWS_OWN_DRIVE = [
-    ("", "各スプレッドシートは、そのチャンネルのメンバーにだけ共有されています。"),
+    ("", "このファイルは、public channel のメンバーに共有されています。"),
+    (
+        "",
+        (
+            "private channel のログは別のスプレッドシートにあり、"
+            "そのチャンネルのメンバーにだけ共有されています。"
+        ),
+    ),
     ("", "メンバーが参加・退出すると、共有先も自動で追従します。"),
+    WHY_PRIVATE_IS_SEPARATE,
 ]
 SHARING_ROWS_SHARED_DRIVE = [
-    ("", "各スプレッドシートは共有ドライブの中にあります。"),
-    ("", "閲覧できる範囲は共有ドライブのメンバーで決まり、ファイル単位では絞れません。"),
+    ("", "このファイルは共有ドライブの中にあり、共有ドライブのメンバーが閲覧できます。"),
+    (
+        "",
+        (
+            "private channel のログは、限定公開の private フォルダにある別のスプレッドシートで、"
+            "そのチャンネルのメンバーにだけ共有されています。"
+        ),
+    ),
+    ("", "private channel のメンバーが参加・退出すると、共有先も自動で追従します。"),
+    WHY_PRIVATE_IS_SEPARATE,
 ]
 
 GUIDE_ROWS: list[tuple[str, str]] = [
@@ -52,9 +75,8 @@ GUIDE_ROWS: list[tuple[str, str]] = [
     ),
     ("", ""),
     (f"{SECTION_PREFIX} ファイルの構成", ""),
-    ("", "ログ本体はこのファイルではなく、チャンネルごとの別スプレッドシートにあります。"),
+    ("", "public channel のログは、このファイルにチャンネルごとのタブとして入っています。"),
     ("", f"「{INDEX_SHEET_TITLE}」タブに一覧とリンクがあります。"),
-    ("", "（Google スプレッドシートはタブ単位で権限を分けられないため、ファイルを分けています）"),
     ("", ""),
     (f"{SECTION_PREFIX} 列の意味", ""),
     ("日時", "投稿日時（Asia/Tokyo）"),
