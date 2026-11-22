@@ -21,10 +21,11 @@ from collections import defaultdict
 
 import gspread
 
-import config
-from google_auth import load_credentials
-from google_drive import drive_service, ATTACHMENTS_FOLDER_NAME, FOLDER_MIME
-from google_sheets import ATTACHMENT_COLUMN, _retry
+from src.infrastructure.google.auth import load_credentials
+from src.infrastructure.google.drive import ATTACHMENTS_FOLDER_NAME, FOLDER_MIME, drive_service
+from src.infrastructure.google.sheets.layout import ATTACHMENT_COLUMN
+from src.infrastructure.google.sheets.retry import retry as _retry
+from src.infrastructure.settings import load_settings
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger(__name__)
@@ -96,10 +97,11 @@ def main():
     parser.add_argument("--apply", action="store_true", help="実際に移動する（既定は一覧のみ）")
     args = parser.parse_args()
 
+    settings = load_settings()
     creds = load_credentials()
     drive = drive_service(creds)
     gc = gspread.authorize(creds)
-    root = config.GOOGLE_DRIVE_FOLDER_ID
+    root = settings.google_drive_folder_id
 
     try:
         linked = linked_file_ids(gc, drive, root)

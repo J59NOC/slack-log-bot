@@ -23,6 +23,7 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-install-project
 
 COPY *.py slack-app-manifest.yml ./
+COPY src ./src
 
 # compose 側の user: で上書きされる。単体で docker run したとき用の既定値。
 USER 1000:1000

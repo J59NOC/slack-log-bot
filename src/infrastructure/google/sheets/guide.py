@@ -8,7 +8,13 @@ Kept free of any config import so the setup wizard can use it before .env is
 complete.
 """
 
+from __future__ import annotations
+
 import logging
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import gspread
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +43,13 @@ GUIDE_ROWS: list[tuple[str, str]] = [
     ("", ""),
     (f"{SECTION_PREFIX} これは何か", ""),
     ("", "Slack の投稿・スレッド返信・添付ファイルを自動で記録しています。"),
-    ("", "Slack 無料プランでは 90 日を過ぎたメッセージが読めなくなるため、消える前に保存しています。"),
+    (
+        "",
+        (
+            "Slack 無料プランでは 90 日を過ぎたメッセージが読めなくなるため、"
+            "消える前に保存しています。"
+        ),
+    ),
     ("", ""),
     (f"{SECTION_PREFIX} ファイルの構成", ""),
     ("", "ログ本体はこのファイルではなく、チャンネルごとの別スプレッドシートにあります。"),
@@ -92,14 +104,24 @@ def _format_requests(sheet_id: int, rows: list[tuple[str, str]]) -> list[dict]:
         },
         {
             "updateDimensionProperties": {
-                "range": {"sheetId": sheet_id, "dimension": "COLUMNS", "startIndex": 0, "endIndex": 1},
+                "range": {
+                    "sheetId": sheet_id,
+                    "dimension": "COLUMNS",
+                    "startIndex": 0,
+                    "endIndex": 1,
+                },
                 "properties": {"pixelSize": 190},
                 "fields": "pixelSize",
             }
         },
         {
             "updateDimensionProperties": {
-                "range": {"sheetId": sheet_id, "dimension": "COLUMNS", "startIndex": 1, "endIndex": 2},
+                "range": {
+                    "sheetId": sheet_id,
+                    "dimension": "COLUMNS",
+                    "startIndex": 1,
+                    "endIndex": 2,
+                },
                 "properties": {"pixelSize": 660},
                 "fields": "pixelSize",
             }
@@ -110,7 +132,11 @@ def _format_requests(sheet_id: int, rows: list[tuple[str, str]]) -> list[dict]:
                 "range": {"sheetId": sheet_id, "startRowIndex": 0, "endRowIndex": 1},
                 "cell": {
                     "userEnteredFormat": {
-                        "textFormat": {"bold": True, "fontSize": 16, "foregroundColor": COLOR_ACCENT}
+                        "textFormat": {
+                            "bold": True,
+                            "fontSize": 16,
+                            "foregroundColor": COLOR_ACCENT,
+                        }
                     }
                 },
                 "fields": "userEnteredFormat.textFormat",
@@ -134,30 +160,46 @@ def _format_requests(sheet_id: int, rows: list[tuple[str, str]]) -> list[dict]:
     for i, (label, _) in enumerate(rows):
         if not label.startswith(SECTION_PREFIX):
             continue
-        requests.append({
+        requests.append(
+            {
+                "repeatCell": {
+                    "range": {"sheetId": sheet_id, "startRowIndex": i, "endRowIndex": i + 1},
+                    "cell": {
+                        "userEnteredFormat": {
+                            "textFormat": {
+                                "bold": True,
+                                "fontSize": 11,
+                                "foregroundColor": COLOR_ACCENT,
+                            }
+                        }
+                    },
+                    "fields": "userEnteredFormat.textFormat",
+                }
+            }
+        )
+
+    # Footer note
+    requests.append(
+        {
             "repeatCell": {
-                "range": {"sheetId": sheet_id, "startRowIndex": i, "endRowIndex": i + 1},
+                "range": {
+                    "sheetId": sheet_id,
+                    "startRowIndex": len(rows) - 1,
+                    "endRowIndex": len(rows),
+                },
                 "cell": {
                     "userEnteredFormat": {
-                        "textFormat": {"bold": True, "fontSize": 11, "foregroundColor": COLOR_ACCENT}
+                        "textFormat": {"fontSize": 9, "foregroundColor": COLOR_MUTED},
                     }
                 },
                 "fields": "userEnteredFormat.textFormat",
             }
-        })
-
-    # Footer note
-    requests.append({
-        "repeatCell": {
-            "range": {"sheetId": sheet_id, "startRowIndex": len(rows) - 1, "endRowIndex": len(rows)},
-            "cell": {"userEnteredFormat": {"textFormat": {"fontSize": 9, "foregroundColor": COLOR_MUTED}}},
-            "fields": "userEnteredFormat.textFormat",
         }
-    })
+    )
     return requests
 
 
-def write_channel_index(spreadsheet, entries: dict[str, str]):
+def write_channel_index(spreadsheet: gspread.Spreadsheet, entries: dict[str, str]) -> None:
     """Refresh the tab listing every channel and where its log lives.
 
     With one spreadsheet per channel, nothing otherwise tells you which files
@@ -177,58 +219,70 @@ def write_channel_index(spreadsheet, entries: dict[str, str]):
     worksheet.update(rows, "A1", value_input_option="USER_ENTERED")
 
     try:
-        spreadsheet.batch_update({"requests": [
+        spreadsheet.batch_update(
             {
-                "updateSheetProperties": {
-                    "properties": {
-                        "sheetId": worksheet.id,
-                        "gridProperties": {"frozenRowCount": 1},
-                    },
-                    "fields": "gridProperties.frozenRowCount",
-                }
-            },
-            {
-                "repeatCell": {
-                    "range": {"sheetId": worksheet.id, "startRowIndex": 0, "endRowIndex": 1},
-                    "cell": {
-                        "userEnteredFormat": {
-                            "backgroundColor": COLOR_ACCENT,
-                            "textFormat": {
-                                "bold": True,
-                                "foregroundColor": {"red": 1.0, "green": 1.0, "blue": 1.0},
+                "requests": [
+                    {
+                        "updateSheetProperties": {
+                            "properties": {
+                                "sheetId": worksheet.id,
+                                "gridProperties": {"frozenRowCount": 1},
                             },
+                            "fields": "gridProperties.frozenRowCount",
                         }
                     },
-                    "fields": "userEnteredFormat(backgroundColor,textFormat)",
-                }
-            },
-            {
-                "updateDimensionProperties": {
-                    "range": {
-                        "sheetId": worksheet.id, "dimension": "COLUMNS",
-                        "startIndex": 0, "endIndex": 1,
+                    {
+                        "repeatCell": {
+                            "range": {
+                                "sheetId": worksheet.id,
+                                "startRowIndex": 0,
+                                "endRowIndex": 1,
+                            },
+                            "cell": {
+                                "userEnteredFormat": {
+                                    "backgroundColor": COLOR_ACCENT,
+                                    "textFormat": {
+                                        "bold": True,
+                                        "foregroundColor": {"red": 1.0, "green": 1.0, "blue": 1.0},
+                                    },
+                                }
+                            },
+                            "fields": "userEnteredFormat(backgroundColor,textFormat)",
+                        }
                     },
-                    "properties": {"pixelSize": 260},
-                    "fields": "pixelSize",
-                }
-            },
-            {
-                "updateDimensionProperties": {
-                    "range": {
-                        "sheetId": worksheet.id, "dimension": "COLUMNS",
-                        "startIndex": 1, "endIndex": 2,
+                    {
+                        "updateDimensionProperties": {
+                            "range": {
+                                "sheetId": worksheet.id,
+                                "dimension": "COLUMNS",
+                                "startIndex": 0,
+                                "endIndex": 1,
+                            },
+                            "properties": {"pixelSize": 260},
+                            "fields": "pixelSize",
+                        }
                     },
-                    "properties": {"pixelSize": 560},
-                    "fields": "pixelSize",
-                }
-            },
-        ]})
+                    {
+                        "updateDimensionProperties": {
+                            "range": {
+                                "sheetId": worksheet.id,
+                                "dimension": "COLUMNS",
+                                "startIndex": 1,
+                                "endIndex": 2,
+                            },
+                            "properties": {"pixelSize": 560},
+                            "fields": "pixelSize",
+                        }
+                    },
+                ]
+            }
+        )
     except Exception as e:
-        logger.warning(f"Failed to format the channel index: {e}")
+        logger.warning("Failed to format the channel index: %s", e)
 
 
-def _is_blank(worksheet) -> bool:
-    """Whether a worksheet holds no content.
+def _is_blank(worksheet: gspread.Worksheet) -> bool:
+    """Tell whether a worksheet holds no content.
 
     get_all_values() returns [[]] for an empty sheet, not [], so truthiness
     alone reports every blank sheet as occupied.
@@ -236,54 +290,72 @@ def _is_blank(worksheet) -> bool:
     return not any(cell.strip() for row in worksheet.get_all_values() for cell in row)
 
 
-def guide_rows(shared_drive: bool = False) -> list[tuple[str, str]]:
-    """The guide's rows, with the sharing lines that match where logs live."""
+def guide_rows(*, shared_drive: bool = False) -> list[tuple[str, str]]:
+    """Return the guide's rows, with the sharing lines that match where logs live."""
     sharing = SHARING_ROWS_SHARED_DRIVE if shared_drive else SHARING_ROWS_OWN_DRIVE
     anchor = ("", f"「{INDEX_SHEET_TITLE}」タブに一覧とリンクがあります。")
     at = GUIDE_ROWS.index(anchor) + 1
     return GUIDE_ROWS[:at] + sharing + GUIDE_ROWS[at:]
 
 
-def ensure_guide_sheet(spreadsheet, shared_drive: bool = False) -> bool:
+def _remove_sheet(spreadsheet: gspread.Spreadsheet, worksheet: gspread.Worksheet) -> None:
+    try:
+        spreadsheet.del_worksheet(worksheet)
+        logger.info("Removed leftover empty sheet: %s", worksheet.title)
+    except Exception as e:
+        logger.warning("Could not remove empty sheet %s: %s", worksheet.title, e)
+
+
+def _first_row(worksheet: gspread.Worksheet) -> list[str]:
+    """先頭行。読めなければ空（そのタブは古いガイドとはみなさない）。"""
+    try:
+        row = worksheet.row_values(1)
+    except Exception as e:
+        logger.debug("Could not read the first row of %s: %s", worksheet.title, e)
+        return []
+    return row
+
+
+def _restore_renamed_guide(worksheets: list[gspread.Worksheet]) -> bool:
+    """Recover a guide that an older version renamed to a channel name.
+
+    Older public-channel runs renamed the default guide sheet to the first
+    channel name instead of creating a new tab. Recover that guide by its
+    title cell before creating another copy. 見つかったら True。
+    """
+    for worksheet in worksheets:
+        first_row = _first_row(worksheet)
+        if first_row and first_row[0].strip() == "Slack ログ":
+            try:
+                worksheet.update_title(GUIDE_SHEET_TITLE)
+                logger.info("Restored guide sheet from renamed tab: %s", worksheet.title)
+            except Exception as e:
+                logger.warning("Could not restore guide sheet: %s", e)
+            return True
+    return False
+
+
+def ensure_guide_sheet(spreadsheet: gspread.Spreadsheet, *, shared_drive: bool = False) -> bool:
     """Write the guide into the spreadsheet's default sheet.
 
     Returns True if it was written, False if it was already there. Never
     overwrites an existing guide, so edits made in the sheet survive.
     """
     worksheets = spreadsheet.worksheets()
-    leftovers = [
-        ws for ws in worksheets if ws.title in DEFAULT_SHEET_TITLES and _is_blank(ws)
-    ]
+    leftovers = [ws for ws in worksheets if ws.title in DEFAULT_SHEET_TITLES and _is_blank(ws)]
 
     if any(ws.title == GUIDE_SHEET_TITLE for ws in worksheets):
         # A blank "シート1" alongside the guide is just clutter. Deleting it is
         # safe here: the guide itself keeps the spreadsheet from losing its
         # last sheet.
         for ws in leftovers:
-            try:
-                spreadsheet.del_worksheet(ws)
-                logger.info(f"Removed leftover empty sheet: {ws.title}")
-            except Exception as e:
-                logger.warning(f"Could not remove empty sheet {ws.title}: {e}")
+            _remove_sheet(spreadsheet, ws)
         return False
 
-    # Older public-channel runs renamed the default guide sheet to the first
-    # channel name instead of creating a new tab. Recover that guide by its
-    # title cell before creating another copy.
-    for worksheet in worksheets:
-        try:
-            first_row = worksheet.row_values(1)
-        except Exception:
-            continue
-        if first_row and first_row[0].strip() == "Slack ログ":
-            try:
-                worksheet.update_title(GUIDE_SHEET_TITLE)
-                logger.info(f"Restored guide sheet from renamed tab: {worksheet.title}")
-            except Exception as e:
-                logger.warning(f"Could not restore guide sheet: {e}")
-            return False
+    if _restore_renamed_guide(worksheets):
+        return False
 
-    rows = [list(row) for row in guide_rows(shared_drive)]
+    rows = [list(row) for row in guide_rows(shared_drive=shared_drive)]
 
     # Prefer reusing the leftover default sheet, but only while it is untouched.
     target = None
@@ -300,6 +372,6 @@ def ensure_guide_sheet(spreadsheet, shared_drive: bool = False) -> bool:
     try:
         spreadsheet.batch_update({"requests": _format_requests(target.id, rows)})
     except Exception as e:
-        logger.warning(f"Failed to format guide sheet: {e}")
+        logger.warning("Failed to format guide sheet: %s", e)
 
     return True

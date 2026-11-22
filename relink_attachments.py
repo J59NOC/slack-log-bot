@@ -21,10 +21,13 @@ import time
 
 import gspread
 
-import config
-from google_drive import drive_service
-from google_auth import load_credentials
-from google_sheets import ATTACHMENT_COLUMN, HEADER_ROW, SheetsHandler, _retry
+from src.domain.log_entry import Attachment
+from src.infrastructure.google.auth import load_credentials
+from src.infrastructure.google.drive import drive_service
+from src.infrastructure.google.sheets.formatting import attachment_cell_request
+from src.infrastructure.google.sheets.layout import ATTACHMENT_COLUMN, HEADER_ROW
+from src.infrastructure.google.sheets.retry import retry as _retry
+from src.infrastructure.settings import load_settings
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger(__name__)
@@ -53,13 +56,13 @@ def main():
     parser.add_argument("--apply", action="store_true", help="実際に書き換える")
     args = parser.parse_args()
 
+    settings = load_settings()
     creds = load_credentials()
     gc = gspread.authorize(creds)
     drive = drive_service(creds)
-    handler = SheetsHandler()
 
     query = (
-        f"'{config.GOOGLE_DRIVE_FOLDER_ID}' in parents and "
+        f"'{settings.google_drive_folder_id}' in parents and "
         f"mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false"
     )
     files = drive.files().list(
@@ -102,13 +105,13 @@ def main():
             requests = []
             for row_number, ids in pending:
                 attachments = [
-                    (names[i], f"https://drive.google.com/file/d/{i}/view")
+                    Attachment(names[i], f"https://drive.google.com/file/d/{i}/view")
                     for i in ids
                     if i in names
                 ]
                 if not attachments:
                     continue
-                requests.append(handler._attachment_cell_request(
+                requests.append(attachment_cell_request(
                     worksheet.id, row_number, attachments
                 ))
 

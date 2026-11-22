@@ -31,9 +31,15 @@ if sys.version_info < (3, 10):
 
 from dotenv import dotenv_values, load_dotenv
 
-# Deliberately does not import config: config exits when required values are
-# missing, which is exactly the situation this script exists to fix.
-import google_auth
+# Deliberately does not load the settings: load_settings() exits when required
+# values are missing, which is exactly the situation this script exists to fix.
+# The Google modules below never load them, so they are safe to import here.
+from src.infrastructure.google import auth as google_auth
+from src.infrastructure.google.drive import (
+    ATTACHMENTS_FOLDER_NAME,
+    CHANNEL_ID_PROPERTY,
+    FOLDER_MIME,
+)
 
 ENV_FILE = ".env"   # rewritten by apply_profile() before anything reads it
 PROFILE_ROOT = "profiles"
@@ -47,9 +53,10 @@ def apply_profile(name: str):
     nothing but the code is shared between them. Keeping each set in its own
     directory means one `git pull` updates them all.
 
-    The paths go into the environment because config.py and google_auth.py
-    read them from there, and because the bot itself is pointed at a profile
-    the same way — SLACK_LOG_PROFILE in its systemd unit.
+    The paths go into the environment because the settings loader and
+    src/infrastructure/google/auth.py read them from there, and because the
+    bot itself is pointed at a profile the same way — SLACK_LOG_PROFILE in
+    its systemd unit.
     """
     global ENV_FILE
     base = os.path.dirname(os.path.abspath(__file__))
@@ -79,14 +86,6 @@ ENV_EXAMPLE = ".env.example"
 # share a name would then write into the same spreadsheet.
 DRIVE_FOLDER_NAME = "Slack ログ - {workspace}"
 SPREADSHEET_NAME = "Slack ログ 索引 - {workspace}"
-
-FOLDER_MIME = "application/vnd.google-apps.folder"
-# Must match google_drive.ATTACHMENTS_FOLDER_NAME and
-# google_drive.CHANNEL_ID_PROPERTY. Declared here rather than imported: those
-# modules import config, and config exits when the ids are missing — which is
-# exactly the state this wizard is in while it is still creating them.
-ATTACHMENTS_FOLDER_NAME = "添付ファイル"
-CHANNEL_ID_PROPERTY = "slackChannelId"
 
 # Scopes the bot needs; must stay in sync with slack-app-manifest.yml
 REQUIRED_SLACK_SCOPES = [
@@ -544,7 +543,7 @@ def check_drive(target: str) -> bool:
 
     from googleapiclient.http import MediaIoBaseUpload
 
-    from google_drive import FOLDER_MIME, drive_service
+    from src.infrastructure.google.drive import drive_service
 
     print("[1m保存先の事前チェック[0m")
 
@@ -681,11 +680,11 @@ def provision_google_resources(
 ) -> dict[str, str]:
     import gspread
 
-    from google_drive import (
+    from src.infrastructure.google.drive import (
         PUBLIC_FOLDER_NAME, PRIVATE_FOLDER_NAME, drive_service, ensure_folder,
         find_file, move_into_folder, shared_drive_id,
     )
-    from sheet_guide import ensure_guide_sheet
+    from src.infrastructure.google.sheets.guide import ensure_guide_sheet
 
     step(3, "スプレッドシートと Drive フォルダの準備")
 
@@ -752,7 +751,7 @@ def provision_google_resources(
     # Google leaves an empty default sheet behind; make it the guide.
     try:
         spreadsheet = gspread.authorize(creds).open_by_key(spreadsheet_id)
-        if ensure_guide_sheet(spreadsheet, in_shared_drive):
+        if ensure_guide_sheet(spreadsheet, shared_drive=in_shared_drive):
             ok("説明タブ「📖 このシートについて」を作成")
         else:
             ok("説明タブは作成済み")
@@ -779,24 +778,26 @@ def verify(env: dict[str, str]):
     load_dotenv(ENV_FILE, override=True)
 
     try:
-        import config
         import gspread
 
-        from google_drive import drive_service, shared_drive_id
+        from src.infrastructure.google.drive import (
+            drive_service, find_file, shared_drive_id,
+        )
+        from src.infrastructure.settings import load_settings
 
+        settings = load_settings()
         creds = google_auth.load_credentials()
         gc = gspread.authorize(creds)
-        from google_drive import find_file
 
         drive = drive_service(creds)
-        drive.bind_drive(shared_drive_id(drive, config.GOOGLE_DRIVE_FOLDER_ID))
+        drive.bind_drive(shared_drive_id(drive, settings.google_drive_folder_id))
         public_folder = find_file(
-            drive, config.GOOGLE_DRIVE_FOLDER_ID,
+            drive, settings.google_drive_folder_id,
             "application/vnd.google-apps.folder", "public",
         )
         if not public_folder:
             raise RuntimeError("public フォルダが見つかりません")
-        spreadsheet_id = config.GOOGLE_SPREADSHEET_ID or find_file(
+        spreadsheet_id = settings.google_spreadsheet_id or find_file(
             drive, public_folder,
             "application/vnd.google-apps.spreadsheet",
         )
@@ -805,7 +806,7 @@ def verify(env: dict[str, str]):
         ss = gc.open_by_key(spreadsheet_id)
         ok(f"スプレッドシートを開けました: {ss.title}")
         folder = drive.files().get(
-            fileId=config.GOOGLE_DRIVE_FOLDER_ID, fields="name"
+            fileId=settings.google_drive_folder_id, fields="name"
         ).execute()
         ok(f"Drive フォルダにアクセスできました: {folder.get('name')}")
     except Exception as e:

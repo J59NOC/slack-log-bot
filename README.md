@@ -45,18 +45,22 @@ Slack無料プランではメッセージ履歴が一定期間で消えてしま
 
 ```
 slack_log_bot/
-├── main.py              # リアルタイム収集 (Socket Mode) + Slackコマンド
-├── collect_weekly.py     # 週次定期収集 (cron/systemd timer)
-├── backfill.py           # 過去履歴の一括取り込み
-├── google_sheets.py      # スプレッドシート操作・書式設定
-├── google_drive.py       # Drive添付ファイルアップロード
-├── collector.py          # チャンネル履歴の収集（3つの入口で共用）
-├── slack_utils.py        # Slackユーザー・チャンネル情報の解決
-├── google_auth.py        # Google OAuth2認証（Sheets/Drive共通）
-├── sheet_guide.py        # 説明タブ・チャンネル一覧タブの生成
+├── main.py              # リアルタイム収集 (Socket Mode) + Slackコマンドの入口
+├── collect_weekly.py     # 週次定期収集 (cron/systemd timer) の入口
+├── backfill.py           # 過去履歴の一括取り込みの入口
+├── src/                  # 本体（ドメイン駆動設計のレイヤー構成）
+│   ├── domain/           # チャンネル・メッセージ・添付ファイルと、その規則（外部 API を知らない）
+│   ├── application/      # ユースケース（記録・編集・削除、履歴の収集、共有の同期、改名への追従）
+│   ├── infrastructure/   # 外部サービスを使った実装
+│   │   ├── google/       # OAuth2認証・Drive・添付ファイルの保存
+│   │   │   └── sheets/   # スプレッドシートの読み書き・書式・説明タブと索引
+│   │   ├── slack/        # Slack API（ユーザー・チャンネル・履歴・ファイル）
+│   │   └── settings.py   # 環境変数（.env）の読み込み
+│   ├── presentation/     # Slackイベントのハンドラ・メンションコマンド・CLI
+│   └── bootstrap.py      # 部品の組み立て
+├── tests/                # 単体テストとシナリオテスト（golden/ に API 呼び出しの記録）
 ├── cleanup_duplicate_files.py    # 重複した添付ファイルの掃除
 ├── relink_attachments.py         # 既存の添付セルをファイル名リンクに変換
-├── config.py             # 環境変数の読み込み
 ├── setup.py              # セットアップウィザード（対話式）
 ├── slack-app-manifest.yml # Slack Appマニフェスト（貼るだけでApp設定完了）
 ├── requirements.txt      # Python依存パッケージ
@@ -69,6 +73,10 @@ slack_log_bot/
 ├── profiles/             # 複数bot運用時の設定（bot ごとに .env とトークン／git管理外）
 └── .gitignore
 ```
+
+`src/` の依存は外側から内側への一方向です（presentation → application → domain ← infrastructure）。
+domain は他のレイヤーを import せず、Google や Slack の都合は infrastructure の中に閉じています。
+どの実装を組み合わせるかは `src/bootstrap.py` だけが知っています。
 
 ## Slackコマンド
 
@@ -205,7 +213,7 @@ private channel のログを見せる相手は Slack channel のメンバーと�
 > 短い投稿は1行分のまま詰まり、長い投稿だけが広がります。
 > ただし **6行分（117px）が上限**で、それを超える長文は表示が途中で切れます。
 > **データは全文保持されており**、セルを選べば数式バーに全文が出ます。
-> 上限を変えるには `google_sheets.py` の `MAX_MESSAGE_LINES` を調整してください。
+> 上限を変えるには `src/infrastructure/google/sheets/layout.py` の `MAX_MESSAGE_LINES` を調整してください。
 
 ### Google Drive の構成
 
@@ -918,7 +926,7 @@ Sheets と Drive の認証が1本化される前のトークンです（Drive権
 
 ## テスト
 
-単体テストは Google API をモックしているため、`setup.py` 実行前でも実行できます。
+テストは Google と Slack の API をフェイクに置き換えているため、`setup.py` 実行前でも実行できます。
 依存関係を同期してから、次を実行します。
 
 ```bash
@@ -926,7 +934,15 @@ uv sync
 uv run python -m unittest discover -s tests -v
 ```
 
-Google API へ接続せず、Drive のフォルダ作成・移動をモックで検証します。
+ドメインの規則やユースケースの単体テストに加えて、シナリオテスト（`tests/test_scenarios.py`）が
+投稿・編集・削除・メンバーの出入り・改名・週次収集などのイベントを流し、そのとき呼んだ
+Sheets／Drive／Slack の API と中身を `tests/golden/` の記録と突き合わせます。
+書式や共有の挙動を意図して変えたときは、記録を書き直して差分を確認してください。
+
+```bash
+UPDATE_GOLDEN=1 uv run python -m unittest tests.test_scenarios
+git diff tests/golden/
+```
 
 実際の Slack／Google Drive／Google Sheets との接続確認やバックフィルは、先に
 `uv run setup.py` を完了させ、`.env` と `drive_token.json` を用意してから実行してください。
