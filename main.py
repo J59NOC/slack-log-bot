@@ -344,7 +344,9 @@ def handle_mention(event, client, say, logger):
     channel_id = event.get("channel", "")
     text = event.get("text", "")
 
-    channel_name = get_channel_info(client, channel_id)["name"]
+    channel_info = get_channel_info(client, channel_id)
+    channel_name = channel_info["name"]
+    sheets.register_channel(channel_id, channel_info.get("is_private", False))
 
     # Strip the mention to leave the command. Slack usually sends <@U012ABC>,
     # but the labelled form <@U012ABC|name> also occurs; without the optional
@@ -379,7 +381,7 @@ def handle_mention(event, client, say, logger):
         threading.Thread(target=run_backfill, daemon=True).start()
 
     elif cleaned == "url":
-        url = sheets.get_spreadsheet_url(channel_name)
+        url = sheets.get_spreadsheet_url(channel_name, channel_id)
         if url:
             say(f":memo: `#{channel_name}` のログはこちら:\n{url}")
         else:
@@ -387,7 +389,7 @@ def handle_mention(event, client, say, logger):
 
     elif cleaned == "help" or cleaned == "":
         me = bot_handle(client)
-        url = sheets.get_spreadsheet_url(channel_name)
+        url = sheets.get_spreadsheet_url(channel_name, channel_id)
         url_line = f"\n:link: {url}" if url else ""
         say(
             f":memo: *`#{channel_name}` のログBot*{url_line}\n\n"
@@ -406,9 +408,8 @@ def handle_mention(event, client, say, logger):
 
 def _backfill_channel(client, channel_id: str, channel_name: str, days: int):
     """Collect past messages for a single channel."""
-    sheets.register_channel(
-        channel_id, get_channel_info(client, channel_id).get("is_private", False)
-    )
+    is_private = get_channel_info(client, channel_id).get("is_private", False)
+    sheets.register_channel(channel_id, is_private)
     member_emails = get_member_emails(client, channel_id)
 
     # Attachments of messages already recorded would be downloaded and

@@ -1448,7 +1448,9 @@ class SheetsHandler:
             self._format_sheet(worksheet, ss)
             self._formatted_sheets.add(channel_name)
 
-        if channel_name not in self._private_channel_ids:
+        # The index is public-channel-only: a private channel's name and URL
+        # must not appear in a spreadsheet the whole workspace can open.
+        if channel_id not in self._private_channel_ids:
             self._register_in_index(channel_name, ss, worksheet.id)
 
         self._sheet_cache[channel_name] = worksheet
@@ -1605,9 +1607,9 @@ class SheetsHandler:
             logger.info(f"Renamed the log spreadsheet to {new_title}")
             return True
 
-    def get_spreadsheet_url(self, channel_name: str) -> str | None:
+    def get_spreadsheet_url(self, channel_name: str, channel_id: str = "") -> str | None:
         """Return the spreadsheet URL for a channel, or None if it has none yet."""
-        if channel_name not in self._private_channel_ids:
+        if channel_id not in self._private_channel_ids:
             try:
                 worksheet = self.index_spreadsheet.worksheet(channel_name)
                 return f"{self.index_spreadsheet.url}#gid={worksheet.id}"
