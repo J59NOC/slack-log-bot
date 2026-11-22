@@ -1,0 +1,73 @@
+{
+ "exit": 0,
+ "console": [
+  "\u001b[1mSlack Log Bot セットアップ\u001b[0m",
+  "  プロファイル: \u001b[1mleaders\u001b[0m  (profiles/leaders/)",
+  "",
+  "\u001b[1m[1/4] Slack トークンの確認\u001b[0m",
+  "  \u001b[32m✓\u001b[0m Socket Mode 用 App-Level Token を確認",
+  "  \u001b[32m✓\u001b[0m 接続成功: Acme / bot=logbot",
+  "  \u001b[33m!\u001b[0m 付与スコープを確認できませんでした（手動で確認してください）",
+  "",
+  "\u001b[1m[2/4] Google の認証\u001b[0m",
+  "  \u001b[32m✓\u001b[0m 既存の認証を再利用: <TMP>/profiles/leaders/drive_token.json",
+  "",
+  "\u001b[1m[3/4] スプレッドシートと Drive フォルダの準備\u001b[0m",
+  "  \u001b[32m✓\u001b[0m 既存の Drive フォルダを使用: parentfolder00000000000000",
+  "  \u001b[33m!\u001b[0m --parent は無視しました。保存先は .env の値が優先されます。",
+  "  \u001b[33m!\u001b[0m   移したい場合は .env の GOOGLE_DRIVE_FOLDER_ID を消して再実行してください。",
+  "  \u001b[32m✓\u001b[0m public / private フォルダを準備",
+  "  \u001b[32m✓\u001b[0m 既存のpublicスプレッドシートを使用: id00000000000000000003",
+  "  \u001b[32m✓\u001b[0m 説明タブは作成済み",
+  "  \u001b[32m✓\u001b[0m 2 件にチャンネルIDを付与（リネーム追従のため）",
+  "",
+  "\u001b[1m[4/4] 書き込みテスト\u001b[0m",
+  "  \u001b[32m✓\u001b[0m スプレッドシートを開けました: Slack ログ 索引 - Acme",
+  "  \u001b[32m✓\u001b[0m Drive フォルダにアクセスできました: Slack ログ",
+  "",
+  "\u001b[1;32mセットアップ完了\u001b[0m",
+  "",
+  "  過去ログの取り込み:  uv run backfill.py --days 7",
+  "  リアルタイム収集:    uv run main.py",
+  "",
+  "\u001b[33m注意:\u001b[0m ユーザーの種類が「外部」で公開ステータスが「テスト中」だと、",
+  "  Google の仕様でリフレッシュトークンが7日で失効します。継続運用する場合は",
+  "  https://console.cloud.google.com/auth/audience で次のどちらかにしてください。",
+  "  - Google Workspace 組織のプロジェクトで、組織のアカウントで認証した場合: 「内部に公開」",
+  "  - それ以外: 「アプリを公開」で「本番環境」へ"
+ ],
+ "env_files": {"profiles/leaders/.env": "SLACK_APP_TOKEN=xapp-1-A111-222-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nSLACK_BOT_TOKEN=xoxb-111-333-cccccccccccccccccccccccc\nGOOGLE_DRIVE_FOLDER_ID=parentfolder00000000000000\n"},
+ "slack_reads": [
+  {"call": "apps.connections.open", "app_token": "xapp-1-A111-222-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+  {"call": "auth.test", "token": "xoxb-111-333-cccccccccccccccccccccccc"},
+  {"call": "conversations.list", "types": "public_channel,private_channel", "cursor": null},
+  {"call": "conversations.list", "types": "public_channel,private_channel", "cursor": "2"}
+ ],
+ "google_auth": [
+  {"call": "load_credentials"},
+  {"call": "load_credentials"},
+  {"call": "load_credentials"}
+ ],
+ "drive": [
+  {"call": "files.get", "fileId": "parentfolder00000000000000", "fields": "driveId", "supportsAllDrives": true},
+  {"call": "files.list", "q": "name = 'public' and 'parentfolder00000000000000' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false", "fields": "files(id)", "pageSize": 1, "supportsAllDrives": true, "includeItemsFromAllDrives": true},
+  {"call": "files.list", "q": "name = 'private' and 'parentfolder00000000000000' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false", "fields": "files(id)", "pageSize": 1, "supportsAllDrives": true, "includeItemsFromAllDrives": true},
+  {"call": "files.list", "q": "'id00000000000000000001' in parents and mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false", "fields": "files(id)", "pageSize": 1, "supportsAllDrives": true, "includeItemsFromAllDrives": true},
+  {"call": "files.get", "fileId": "id00000000000000000003", "fields": "parents", "supportsAllDrives": true},
+  {"call": "files.list", "q": "'parentfolder00000000000000' in parents and trashed = false", "fields": "files(id, name, appProperties)", "pageSize": 1000, "supportsAllDrives": true, "includeItemsFromAllDrives": true},
+  {"call": "files.list", "q": "'id00000000000000000005' in parents and trashed = false", "fields": "files(id, name, appProperties)", "pageSize": 1000, "supportsAllDrives": true, "includeItemsFromAllDrives": true},
+  {"call": "files.update", "fileId": "id00000000000000000004", "body": {"appProperties": {"slackChannelId": "C1"}}, "fields": "id", "supportsAllDrives": true},
+  {"call": "files.update", "fileId": "id00000000000000000006", "body": {"appProperties": {"slackChannelId": "C1"}}, "fields": "id", "supportsAllDrives": true},
+  {"call": "files.get", "fileId": "parentfolder00000000000000", "fields": "driveId", "supportsAllDrives": true},
+  {"call": "files.list", "q": "'parentfolder00000000000000' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false and name = 'public'", "fields": "files(id)", "pageSize": 1, "supportsAllDrives": true, "includeItemsFromAllDrives": true},
+  {"call": "files.list", "q": "'id00000000000000000001' in parents and mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false", "fields": "files(id)", "pageSize": 1, "supportsAllDrives": true, "includeItemsFromAllDrives": true},
+  {"call": "files.get", "fileId": "parentfolder00000000000000", "fields": "name", "supportsAllDrives": true}
+ ],
+ "sheets": [
+  {"call": "open_by_key", "key": "id00000000000000000003"},
+  {"call": "worksheets", "ss": "id00000000000000000003"},
+  {"call": "open_by_key", "key": "id00000000000000000003"}
+ ],
+ "logs": [
+ ]
+}

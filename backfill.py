@@ -1,7 +1,10 @@
 """Backfill tool - Fetch existing message history and save to Google Sheets/Drive.
 
 Messages and their thread replies are grouped together in the spreadsheet.
-Public channels → shared spreadsheet, Private channels → separate spreadsheet.
+Public channels → tabs in the shared index spreadsheet,
+Private channels → separate spreadsheet per channel.
+
+本体は src/presentation/cli.py にある。
 
 Usage:
     python backfill.py                      # All channels the bot is in
@@ -10,138 +13,7 @@ Usage:
     python backfill.py --days 30            # Last 30 days (default: 90)
 """
 
-import argparse
-import logging
-import sys
-from datetime import datetime, timedelta, timezone
-
-from slack_sdk import WebClient
-
-import config
-from google_sheets import SheetsHandler
-from google_drive import DriveHandler
-from collector import fetch_channel_messages
-from slack_utils import (
-    get_member_emails,
-    install_retry_handlers,
-)
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    handlers=[logging.StreamHandler(sys.stdout)],
-)
-logger = logging.getLogger(__name__)
-
-
-def backfill(
-    channel_filter: str | None = None, days: int = 90, public_only: bool = False
-):
-    client = WebClient(token=config.SLACK_BOT_TOKEN)
-    install_retry_handlers(client)
-    sheets = SheetsHandler()
-    drive = DriveHandler()
-
-    # The bot's own replies ("collection started", "here is the log") are
-    # posted with a bot token, which carries no subtype to filter on.
-    bot_user_ids = (client.auth_test().get("user_id", ""),)
-
-    # Get channels
-    channels = []
-    cursor = None
-    while True:
-        resp = client.conversations_list(
-            types="public_channel,private_channel",
-            limit=200,
-            cursor=cursor,
-        )
-        channels.extend(resp["channels"])
-        cursor = resp.get("response_metadata", {}).get("next_cursor")
-        if not cursor:
-            break
-
-    listed_channels = channels
-    channels = [ch for ch in listed_channels if ch.get("is_member")]
-
-    if public_only:
-        channels = [
-            ch for ch in channels
-            if not (ch.get("is_private", False) or ch.get("is_group", False))
-        ]
-
-    if channel_filter:
-        requested_name = channel_filter.lstrip("#")
-        listed_match = next(
-            (ch for ch in listed_channels if ch["name"] == requested_name), None
-        )
-        channels = [ch for ch in channels if ch["name"] == requested_name]
-        if not channels:
-            if listed_match:
-                logger.error(
-                    f"Channel '#{requested_name}' はSlack APIでは見えていますが、"
-                    f"botが未参加です（channel_id={listed_match['id']}）。"
-                    "先に /invite @slack-log-bot-private を実行してください。"
-                )
-            else:
-                logger.error(
-                    f"Channel '#{requested_name}' はSlack APIの一覧にありません。"
-                    "チャンネル名、Slack App、SLACK_BOT_TOKENのworkspaceを確認してください。"
-                    f"（API取得件数: {len(listed_channels)}）"
-                )
-            return
-
-    oldest = datetime.now(timezone.utc) - timedelta(days=days)
-    oldest_ts = str(oldest.timestamp())
-
-    total_new = 0
-    total_skipped = 0
-
-    for ch in channels:
-        ch_name = ch["name"]
-        ch_id = ch["id"]
-        is_private = ch.get("is_private", False) or ch.get("is_group", False)
-        sheets.register_channel(ch_id, is_private)
-
-        label = "private" if is_private else "public"
-        logger.info(f"Backfilling #{ch_name} [{label}]...")
-
-        # Every channel's sheet is shared with that channel's members.
-        member_emails = get_member_emails(client, ch_id)
-
-        # Attachments of messages already recorded would be downloaded and
-        # re-uploaded on every run: the rows get deduped at write time, the
-        # Drive files do not, so each run leaves another copy behind.
-        known_ts = sheets.recorded_ts(ch_name, member_emails, ch_id)
-
-        collected = fetch_channel_messages(
-            client, drive, ch_id, ch_name, oldest_ts, known_ts, member_emails,
-            skip_user_ids=bot_user_ids, is_private=is_private,
-        )
-
-        # Phase 2: Write grouped by thread
-        new_count, skip_count = sheets.write_messages_grouped(
-            ch_name, collected, member_emails, ch_id,
-        )
-        logger.info(f"  #{ch_name}: {new_count} new, {skip_count} duplicates skipped")
-        total_new += new_count
-        total_skipped += skip_count
-
-    logger.info(
-        f"Backfill complete. New: {total_new}, Skipped (duplicate): {total_skipped}"
-    )
-
+from src.presentation.cli import backfill_main
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Backfill Slack messages to Google Sheets")
-    parser.add_argument("--channel", type=str, help="Channel name to backfill (default: all)")
-    parser.add_argument(
-        "--public", action="store_true",
-        help="Backfill all public channels the bot is in",
-    )
-    parser.add_argument("--days", type=int, default=90, help="Number of days to look back (default: 90)")
-    args = parser.parse_args()
-
-    if args.channel and args.public:
-        parser.error("--channel and --public cannot be used together")
-
-    backfill(channel_filter=args.channel, days=args.days, public_only=args.public)
+    backfill_main()

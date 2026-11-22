@@ -1,0 +1,43 @@
+{
+ "exit": 1,
+ "console": [
+  "\u001b[1mSlack Log Bot セットアップ\u001b[0m",
+  "",
+  "\u001b[1m[1/4] Slack トークンの確認\u001b[0m",
+  "  \u001b[32m✓\u001b[0m Socket Mode 用 App-Level Token を確認",
+  "  \u001b[32m✓\u001b[0m 接続成功: Acme / bot=logbot",
+  "  \u001b[32m✓\u001b[0m 必要なスコープ 9 個すべてを確認",
+  "",
+  "\u001b[1m[2/4] Google の認証\u001b[0m",
+  "  ブラウザが開きます。Google アカウントでアクセスを許可してください。",
+  "  「このアプリは確認されていません」の警告は 詳細 → 移動 で進めます。",
+  "",
+  "  \u001b[33m!\u001b[0m Google がアクセスを拒否しました (access_denied)",
+  "    次のどちらかの可能性が高いです。",
+  "    - 公開ステータスが「テスト中」で、自分がテストユーザーに入っていない",
+  "    - ユーザーの種類が「内部」なのに、組織外のアカウントで認証した",
+  "    https://console.cloud.google.com/auth/audience を開き、",
+  "    組織のプロジェクトなら「内部に公開」して組織のアカウントで認証するか、",
+  "    「アプリを公開」で公開ステータスを「本番環境」にしてください。",
+  "    (テストユーザーに自分を追加しても通りますが、",
+  "     その場合トークンが7日で失効します)",
+  "[stderr]   \u001b[31m✗\u001b[0m 公開設定を変更してから再実行してください。"
+ ],
+ "env_files": {".env": "SLACK_APP_TOKEN=xapp-1-A111-222-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nSLACK_BOT_TOKEN=xoxb-111-222-bbbbbbbbbbbbbbbbbbbbbbbb\n"},
+ "slack_reads": [
+  {"call": "apps.connections.open", "app_token": "xapp-1-A111-222-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+  {"call": "auth.test", "token": "xoxb-111-222-bbbbbbbbbbbbbbbbbbbbbbbb"},
+  {"call": "conversations.list", "types": "public_channel,private_channel", "cursor": null},
+  {"call": "conversations.list", "types": "public_channel,private_channel", "cursor": "2"}
+ ],
+ "google_auth": [
+  {"call": "flow", "client_file": "client_secret.json", "scopes": ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]},
+  {"call": "run_local_server", "port": 0, "open_browser": true}
+ ],
+ "drive": [
+ ],
+ "sheets": [
+ ],
+ "logs": [
+ ]
+}

@@ -1,0 +1,21 @@
+{
+ "exit": 1,
+ "console": [
+  "\u001b[1m保存先の事前チェック\u001b[0m",
+  "[stderr]   \u001b[31m✗\u001b[0m フォルダを開けませんでした: File not found: nosuchfolder",
+  "[stderr]   この Google アカウントがフォルダのメンバーになっているか確認してください。"
+ ],
+ "env_files": {},
+ "slack_reads": [
+ ],
+ "google_auth": [
+  {"call": "load_credentials"}
+ ],
+ "drive": [
+  {"call": "files.get", "fileId": "nosuchfolder", "fields": "id,name,mimeType,driveId,capabilities", "supportsAllDrives": true}
+ ],
+ "sheets": [
+ ],
+ "logs": [
+ ]
+}

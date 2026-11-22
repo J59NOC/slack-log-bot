@@ -1,7 +1,7 @@
 # Slack Log Bot
 #
 # 認証情報はイメージに入れず、実行時に profiles/ をマウントして渡す。
-# 使い方は README の「Docker で動かす」を参照。
+# 使い方は docs/running.md の「Docker で動かす」を参照。
 
 FROM python:3.13-slim
 
@@ -20,9 +20,10 @@ WORKDIR /app
 
 # 依存だけ先に入れて、コード変更時にキャッシュを効かせる
 COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen --no-install-project
+RUN uv sync --frozen --no-install-project --no-dev
 
 COPY *.py slack-app-manifest.yml ./
+COPY src ./src
 
 # compose 側の user: で上書きされる。単体で docker run したとき用の既定値。
 USER 1000:1000

@@ -7,7 +7,7 @@ Kept so existing instructions and scripts keep working.
 
 import sys
 
-from setup import run_google_auth
+from src.presentation.setup.wizard import run_google_auth
 
 if __name__ == "__main__":
     print("setup_drive_auth.py は setup.py に統合されました。", file=sys.stderr)

@@ -1,10 +1,11 @@
 # GitHub Pages の設定
 
-Google OAuth のホームページとプライバシーポリシーを公開するために、GitHub Pages を使用します。
+Google OAuth のブランディング画面（[導入手順 Step 2](setup.md#step-2-google-cloudの設定)）に入力する
+ホームページとプライバシーポリシーを、GitHub Pages で公開しています。
 
 ## 公開される内容
 
-GitHub Actions が `privacy-policy/` ディレクトリだけを Pages artifact として公開します。
+GitHub Actions（`.github/workflows/pages.yml`）が `privacy-policy/` ディレクトリだけを Pages artifact として公開します。
 `docs/` やリポジトリ全体が公開されるわけではありません。
 
 公開 URL:
@@ -18,14 +19,8 @@ https://j59noc.github.io/slack-log-bot/privacy-policy.html
 
 リポジトリの **Settings → Pages** を開き、Source を **GitHub Actions** に設定します。
 
-workflow は次のブランチへの push で実行されます。
-
-- `feat/private-channel-drive-layout`（作業中の確認用）
-- `main`（マージ後の正式公開用）
-
-feature ブランチで試す場合、`github-pages` environment の **Deployment branches and tags** に
-`feat/private-channel-drive-layout` を追加してください。設定されていない場合、環境保護ルールによって
-デプロイが拒否されます。
+workflow は、`main` に `privacy-policy/` か workflow 自体の変更が push されたときに実行されます。
+Actions の画面から手動で実行することもできます（`workflow_dispatch`）。
 
 ## Google OAuth の入力値
 

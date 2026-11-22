@@ -1,0 +1,49 @@
+{
+ "exit": 1,
+ "console": [
+  "\u001b[1mSlack Log Bot セットアップ\u001b[0m",
+  "",
+  "\u001b[1m[1/4] Slack トークンの確認\u001b[0m",
+  "  \u001b[32m✓\u001b[0m Socket Mode 用 App-Level Token を確認",
+  "",
+  "  \u001b[33m!\u001b[0m Slack が認証を拒否しました: token_revoked",
+  "    - トークンが失効しています。再インストールして新しいトークンを取得してください",
+  "    （このトークンは .env から読み込んだものです）",
+  "",
+  "  もう一度入力してください。",
+  "",
+  "  Slack App の Bot User OAuth Token が必要です。",
+  "  https://api.slack.com/apps → 対象アプリ → OAuth & Permissions",
+  "  （手動で選択せず Copy ボタンを使ってください）",
+  "  SLACK_BOT_TOKEN (xoxb-...): xoxb-9-8-ffffffffffffffffffffffff",
+  "",
+  "  \u001b[33m!\u001b[0m Slack が認証を拒否しました: token_revoked",
+  "    - トークンが失効しています。再インストールして新しいトークンを取得してください",
+  "",
+  "  もう一度入力してください。",
+  "",
+  "  Slack App の Bot User OAuth Token が必要です。",
+  "  https://api.slack.com/apps → 対象アプリ → OAuth & Permissions",
+  "  （手動で選択せず Copy ボタンを使ってください）",
+  "  SLACK_BOT_TOKEN (xoxb-...): xoxb-9-7-gggggggggggggggggggggggg",
+  "",
+  "  \u001b[33m!\u001b[0m Slack が認証を拒否しました: token_revoked",
+  "    - トークンが失効しています。再インストールして新しいトークンを取得してください",
+  "[stderr]   \u001b[31m✗\u001b[0m トークンを確認できませんでした。"
+ ],
+ "env_files": {".env": "SLACK_APP_TOKEN=xapp-1-A111-222-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nSLACK_BOT_TOKEN=xoxb-9-9-eeeeeeeeeeeeeeeeeeeeeeee\n"},
+ "slack_reads": [
+  {"call": "apps.connections.open", "app_token": "xapp-1-A111-222-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+  {"call": "auth.test", "token": "xoxb-9-9-eeeeeeeeeeeeeeeeeeeeeeee"},
+  {"call": "auth.test", "token": "xoxb-9-8-ffffffffffffffffffffffff"},
+  {"call": "auth.test", "token": "xoxb-9-7-gggggggggggggggggggggggg"}
+ ],
+ "google_auth": [
+ ],
+ "drive": [
+ ],
+ "sheets": [
+ ],
+ "logs": [
+ ]
+}

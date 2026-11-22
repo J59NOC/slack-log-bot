@@ -15,3 +15,56 @@ dependencies = [
 
 [tool.uv]
 package = false
+
+[dependency-groups]
+dev = [
+    "ruff>=0.17.6",
+]
+
+[tool.ruff]
+line-length = 100
+# target-version は requires-python（>=3.10）から決まる
+# fakes / scenarios（tests/）と src / scripts を自前のモジュールとして並べる
+src = [".", "tests"]
+
+[tool.ruff.lint]
+# すべてのルールを有効にする。ruff を上げると新しいルールも入るので、
+# uv sync --upgrade で ruff が上がったら ruff check を流して確かめる。
+#
+# 方針: 行内の抑制（# noqa）は原則使わずコードを直す。性質上どうしても直せない
+# 箇所だけ行内で抑制し（理由を直前の行に書く）、1 つのルールで 6 か所以上に
+# なる場合はルールごと外す（下の ignore / per-file-ignores、理由つき）。
+select = ["ALL"]
+ignore = [
+    # ── 互いに両立しない組み合わせ。今の書き方（D211・D212）に合わせる ──
+    "D203",    # クラスの docstring の前に空行（D211 と両立しない）
+    "D213",    # 複数行 docstring の要約を 2 行目に（D212 と両立しない）
+    # ── フォーマッタ（ruff format）と衝突する（ruff format が警告するもの）──
+    "COM812",  # 末尾のカンマ
+    # ── 日本語で書いているため ──
+    "D400",    # docstring の要約をピリオドで終える（日本語は「。」で終わる。約 300 か所）
+    "D415",    # 同上（? や ! も可とする版）
+    # ── 直すと運用者・利用者から見える挙動が変わる ──
+    "BLE001",  # Exception をまとめて受ける: 常駐 bot が外部 API の想定外の失敗で
+               # 止まらないよう、境界でわざと受けてログに残している（89 か所）
+    "TRY400",  # except の中は logger.exception で: 想定内の失敗（ユーザーが見つからない
+               # など）にもトレースバックが付き、ログが読めなくなる（18 か所）
+    # ── このプロジェクトに当てはまらない ──
+    "PT",      # pytest 用のルール。テストは unittest で書いている（110 か所）
+    # ── 判断待ち ──
+    "CPY001",  # ファイルごとの著作権表記（LICENSE に 2 者の表記がある。付けるかは要判断）
+]
+# 日本語の文で使っている記号。紛らわしい文字の検出（RUF001-003）からこれだけ外す
+allowed-confusables = ["（", "）", "＝", "／", "−"]
+
+[tool.ruff.lint.per-file-ignores]
+# 対話式セットアップの画面。print が画面そのもの（78 か所）
+"src/presentation/setup/**" = ["T201"]
+"setup_drive_auth.py" = ["T201"]
+# テストは何を確かめるかをメソッド名で表す。フェイクは置き換える相手（Slack・
+# Google の API）に合わせた形で、説明はその API の文書にある（約 210 か所）
+"tests/**" = ["D100", "D101", "D102", "D103", "D104", "D105", "D106", "D107"]
+
+[tool.ruff.lint.flake8-tidy-imports]
+# 同じ階層も含めて、import は src. から始まる絶対パスで書く
+ban-relative-imports = "all"

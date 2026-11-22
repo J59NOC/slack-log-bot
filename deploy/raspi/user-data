@@ -47,7 +47,7 @@ packages:
 
 write_files:
   # 常駐本体。.env が無いうちは起動しない ── 認証情報を送る前に
-  # 起動すると config.py が終了し、再起動を繰り返すだけになる。
+  # 起動すると設定の読み込みで終了し、再起動を繰り返すだけになる。
   - path: /etc/systemd/system/slack-log-bot.service
     permissions: "0644"
     content: |
