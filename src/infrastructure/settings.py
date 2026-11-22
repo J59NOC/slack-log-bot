@@ -41,9 +41,42 @@ class Settings:
     profile: str = ""
 
 
+PROFILE_ROOT = "profiles"
+
+
 def profile_dir(profile: str) -> Path:
     """プロファイルの設定の置き場所。プロファイルが無ければリポジトリのルート。"""
-    return BASE_DIR / "profiles" / profile if profile else BASE_DIR
+    return BASE_DIR / PROFILE_ROOT / profile if profile else BASE_DIR
+
+
+def apply_profile(name: str) -> Path:
+    """Point this run's files at profiles/<name>/ instead of the root.
+
+    One checkout, several bots: a public one and a private one want different
+    Slack apps, different Google accounts and different Drive folders, and
+    nothing but the code is shared between them. Keeping each set in its own
+    directory means one `git pull` updates them all.
+
+    The paths go into the environment because load_settings() and
+    google/auth.py read them from there, and because the bot itself is pointed
+    at a profile the same way — SLACK_LOG_PROFILE in its systemd unit.
+
+    プロファイルのディレクトリを（無ければ作って）返す。セットアップ用。
+    """
+    directory = BASE_DIR / PROFILE_ROOT / name
+    directory.mkdir(parents=True, exist_ok=True)
+    directory.chmod(0o700)  # a token and a bot token live here
+
+    os.environ["SLACK_LOG_PROFILE"] = name
+    os.environ["GOOGLE_DRIVE_TOKEN_FILE"] = str(directory / "drive_token.json")
+
+    # An OAuth client is not account-specific, so a shared one at the root
+    # serves every profile unless this one brought its own.
+    own_client = directory / "client_secret.json"
+    os.environ["GOOGLE_OAUTH_CLIENT_FILE"] = str(
+        own_client if own_client.exists() else BASE_DIR / "client_secret.json"
+    )
+    return directory
 
 
 def setup_hint(profile: str) -> str:

@@ -1,0 +1,28 @@
+{
+ "exit": 1,
+ "console": [
+  "\u001b[1mSlack Log Bot セットアップ\u001b[0m",
+  "",
+  "\u001b[1m[1/4] Slack トークンの確認\u001b[0m",
+  "  \u001b[32m✓\u001b[0m Socket Mode 用 App-Level Token を確認",
+  "  \u001b[32m✓\u001b[0m 接続成功: Acme / bot=logbot",
+  "",
+  "  \u001b[33m!\u001b[0m スコープが不足しています: app_mentions:read, groups:history, groups:read, users:read.email, files:read, chat:write",
+  "    slack-app-manifest.yml を App Manifest 画面に貼り直し、",
+  "    アプリを再インストールしてください。",
+  "[stderr]   \u001b[31m✗\u001b[0m スコープ不足のため中断しました。"
+ ],
+ "env_files": {".env": "SLACK_APP_TOKEN=xapp-1-A111-222-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nSLACK_BOT_TOKEN=xoxb-111-444-dddddddddddddddddddddddd\n"},
+ "slack_reads": [
+  {"call": "apps.connections.open", "app_token": "xapp-1-A111-222-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+  {"call": "auth.test", "token": "xoxb-111-444-dddddddddddddddddddddddd"}
+ ],
+ "google_auth": [
+ ],
+ "drive": [
+ ],
+ "sheets": [
+ ],
+ "logs": [
+ ]
+}

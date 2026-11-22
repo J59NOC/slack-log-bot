@@ -52,7 +52,7 @@ class LayerTests(unittest.TestCase):
     def test_google_modules_used_by_setup_never_load_settings(self) -> None:
         # setup.py は .env が揃う前にこれらを import する。設定の読み込みは
         # 足りない値があると終了するので、ここから呼ばれてはいけない。
-        for name in ("auth.py", "drive.py", "sheets/guide.py"):
+        for name in ("auth.py", "drive.py", "provisioning.py", "sheets/guide.py"):
             source = (SRC / "infrastructure" / "google" / name).read_text(encoding="utf-8")
             self.assertNotIn("settings", source, name)
 

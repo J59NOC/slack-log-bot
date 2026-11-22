@@ -52,16 +52,18 @@ slack_log_bot/
 │   ├── domain/           # チャンネル・メッセージ・添付ファイルと、その規則（外部 API を知らない）
 │   ├── application/      # ユースケース（記録・編集・削除、履歴の収集、共有の同期、改名への追従）
 │   ├── infrastructure/   # 外部サービスを使った実装
-│   │   ├── google/       # OAuth2認証・Drive・添付ファイルの保存
+│   │   ├── google/       # OAuth2認証・Drive・添付ファイルの保存・セットアップ時の準備と点検
 │   │   │   └── sheets/   # スプレッドシートの読み書き・書式・説明タブと索引
-│   │   ├── slack/        # Slack API（ユーザー・チャンネル・履歴・ファイル）
-│   │   └── settings.py   # 環境変数（.env）の読み込み
+│   │   ├── slack/        # Slack API（ユーザー・チャンネル・履歴・ファイル・トークン確認）
+│   │   ├── settings.py   # 環境変数（.env）とプロファイルの読み込み
+│   │   └── env_file.py   # .env の書き出し（セットアップ用）
 │   ├── presentation/     # Slackイベントのハンドラ・メンションコマンド・CLI
+│   │   └── setup/        # セットアップウィザードの画面と流れ
 │   └── bootstrap.py      # 部品の組み立て
-├── tests/                # 単体テストとシナリオテスト（golden/ に API 呼び出しの記録）
+├── tests/                # 単体テストとシナリオテスト（golden/ に API 呼び出しと画面出力の記録）
 ├── cleanup_duplicate_files.py    # 重複した添付ファイルの掃除
 ├── relink_attachments.py         # 既存の添付セルをファイル名リンクに変換
-├── setup.py              # セットアップウィザード（対話式）
+├── setup.py              # セットアップウィザード（対話式）の入口
 ├── slack-app-manifest.yml # Slack Appマニフェスト（貼るだけでApp設定完了）
 ├── requirements.txt      # Python依存パッケージ
 ├── .env.example          # 環境変数テンプレート
@@ -934,13 +936,17 @@ uv sync
 uv run python -m unittest discover -s tests -v
 ```
 
-ドメインの規則やユースケースの単体テストに加えて、シナリオテスト（`tests/test_scenarios.py`）が
-投稿・編集・削除・メンバーの出入り・改名・週次収集などのイベントを流し、そのとき呼んだ
-Sheets／Drive／Slack の API と中身を `tests/golden/` の記録と突き合わせます。
-書式や共有の挙動を意図して変えたときは、記録を書き直して差分を確認してください。
+ドメインの規則やユースケースの単体テストに加えて、シナリオテストが実際の使われ方をなぞります。
+
+- `tests/test_scenarios.py`: 投稿・編集・削除・メンバーの出入り・改名・週次収集などのイベントを流し、
+  そのとき呼んだ Sheets／Drive／Slack の API と中身を `tests/golden/` の記録と突き合わせます。
+- `tests/test_setup_wizard.py`: `setup.py` に入力を流し、画面に出た文字・API 呼び出し・
+  書き出した `.env` を `tests/golden/setup/` の記録と突き合わせます。
+
+書式や共有、セットアップの挙動を意図して変えたときは、記録を書き直して差分を確認してください。
 
 ```bash
-UPDATE_GOLDEN=1 uv run python -m unittest tests.test_scenarios
+UPDATE_GOLDEN=1 uv run python -m unittest tests.test_scenarios tests.test_setup_wizard
 git diff tests/golden/
 ```
 

@@ -1,0 +1,24 @@
+{
+ "exit": 1,
+ "console": [
+  "\u001b[1mSlack Log Bot セットアップ\u001b[0m",
+  "",
+  "\u001b[1m[1/4] Slack トークンの確認\u001b[0m",
+  "  Socket Mode 用の App-Level Token が必要です。",
+  "  Basic Information → App-Level Tokens → connections:write",
+  "  SLACK_APP_TOKEN (xapp-...): <EOF>",
+  "",
+  "[stderr]   \u001b[31m✗\u001b[0m 中断しました。"
+ ],
+ "env_files": {},
+ "slack_reads": [
+ ],
+ "google_auth": [
+ ],
+ "drive": [
+ ],
+ "sheets": [
+ ],
+ "logs": [
+ ]
+}

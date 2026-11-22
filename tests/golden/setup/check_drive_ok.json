@@ -1,0 +1,39 @@
+{
+ "exit": 0,
+ "console": [
+  "\u001b[1m保存先の事前チェック\u001b[0m",
+  "  \u001b[32m✓\u001b[0m フォルダを開けました: Slack ログ（共有ドライブ内）",
+  "  \u001b[32m✓\u001b[0m フォルダの作成",
+  "  \u001b[32m✓\u001b[0m スプレッドシートの作成",
+  "  \u001b[32m✓\u001b[0m ファイルのアップロード（添付ファイル用）",
+  "  \u001b[32m✓\u001b[0m ゴミ箱への移動（削除されたメッセージの添付を片付ける）",
+  "  \u001b[32m✓\u001b[0m 作ったものを検索で見つけられるか",
+  "",
+  "\u001b[1;32mすべて通りました\u001b[0m",
+  "  このフォルダを保存先にするには、続けて次を実行してください。",
+  "    python setup.py --profile <名前> --parent parentfolder00000000000000",
+  "",
+  "  （このチェックは何も書き換えていません。作ったものは全部消しました）"
+ ],
+ "env_files": {},
+ "slack_reads": [
+ ],
+ "google_auth": [
+  {"call": "load_credentials"}
+ ],
+ "drive": [
+  {"call": "files.get", "fileId": "parentfolder00000000000000", "fields": "id,name,mimeType,driveId,capabilities", "supportsAllDrives": true},
+  {"call": "files.create", "body": {"name": "__slack-log-bot-check__", "mimeType": "application/vnd.google-apps.folder", "parents": ["parentfolder00000000000000"]}, "fields": "id", "supportsAllDrives": true},
+  {"call": "files.create", "body": {"name": "__slack-log-bot-check__.txt", "parents": ["id00000000000000000001"]}, "media_body": {"mimetype": "text/plain", "size": 5}, "fields": "id", "supportsAllDrives": true},
+  {"call": "files.update", "fileId": "id00000000000000000003", "body": {"trashed": true}, "supportsAllDrives": true},
+  {"call": "files.list", "q": "'id00000000000000000001' in parents and trashed = false", "fields": "files(id,name)", "pageSize": 10, "supportsAllDrives": true, "includeItemsFromAllDrives": true, "corpora": "drive", "driveId": "shareddrive0000000000000"},
+  {"call": "files.delete", "fileId": "id00000000000000000003", "supportsAllDrives": true},
+  {"call": "files.delete", "fileId": "id00000000000000000002", "supportsAllDrives": true},
+  {"call": "files.delete", "fileId": "id00000000000000000001", "supportsAllDrives": true}
+ ],
+ "sheets": [
+  {"call": "create", "title": "__slack-log-bot-check__", "folder_id": "id00000000000000000001"}
+ ],
+ "logs": [
+ ]
+}

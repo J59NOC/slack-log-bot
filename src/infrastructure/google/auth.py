@@ -13,9 +13,15 @@ import json
 import logging
 import os
 from pathlib import Path
+from typing import TYPE_CHECKING
 
+# InstalledAppFlow はモジュールから属性で引く（テストが差し替える）
+import google_auth_oauthlib.flow
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
+
+if TYPE_CHECKING:
+    from google_auth_oauthlib.flow import InstalledAppFlow
 
 logger = logging.getLogger(__name__)
 
@@ -114,3 +120,11 @@ def load_credentials(required_scopes: list[str] | None = None) -> Credentials:
         logger.info("Refreshed Google OAuth2 token")
 
     return creds
+
+
+def consent_flow(client_file: str) -> InstalledAppFlow:
+    """ブラウザの同意画面で認証する OAuth フロー（セットアップ用）。
+
+    run_local_server() で同意を待ち、新しい認証情報を受け取る。
+    """
+    return google_auth_oauthlib.flow.InstalledAppFlow.from_client_secrets_file(client_file, SCOPES)

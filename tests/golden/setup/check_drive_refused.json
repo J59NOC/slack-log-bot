@@ -1,0 +1,39 @@
+{
+ "exit": 1,
+ "console": [
+  "\u001b[1m保存先の事前チェック\u001b[0m",
+  "  \u001b[32m✓\u001b[0m フォルダを開けました: Slack ログ（マイドライブ内）",
+  "  \u001b[33m!\u001b[0m 共有ドライブではないため、ファイルの所有者はこのアカウントのままになります。",
+  "  \u001b[31m✗\u001b[0m フォルダの作成",
+  "      insufficientFilePermissions: files.create",
+  "  \u001b[31m✗\u001b[0m スプレッドシートの作成",
+  "      insufficientFilePermissions: sheets.create",
+  "  \u001b[31m✗\u001b[0m ファイルのアップロード（添付ファイル用）",
+  "      insufficientFilePermissions: files.create",
+  "",
+  "\u001b[1;31m足りない権限があります\u001b[0m",
+  "  - フォルダを作れません。権限が「閲覧者」になっていないか確認してください。",
+  "  - スプレッドシートを作れません。",
+  "  - ファイルをアップロードできません。",
+  "",
+  "  共有ドライブ側で、この Google アカウントを",
+  "  \u001b[1m「コンテンツ管理者」\u001b[0m以上として追加してください。",
+  "  組織外のアカウントを追加できない設定になっている可能性もあります。"
+ ],
+ "env_files": {},
+ "slack_reads": [
+ ],
+ "google_auth": [
+  {"call": "load_credentials"}
+ ],
+ "drive": [
+  {"call": "files.get", "fileId": "parentfolder00000000000000", "fields": "id,name,mimeType,driveId,capabilities", "supportsAllDrives": true},
+  {"call": "files.create", "body": {"name": "__slack-log-bot-check__", "mimeType": "application/vnd.google-apps.folder", "parents": ["parentfolder00000000000000"]}, "fields": "id", "supportsAllDrives": true},
+  {"call": "files.create", "body": {"name": "__slack-log-bot-check__.txt", "parents": ["parentfolder00000000000000"]}, "media_body": {"mimetype": "text/plain", "size": 5}, "fields": "id", "supportsAllDrives": true}
+ ],
+ "sheets": [
+  {"call": "create", "title": "__slack-log-bot-check__", "folder_id": "parentfolder00000000000000"}
+ ],
+ "logs": [
+ ]
+}

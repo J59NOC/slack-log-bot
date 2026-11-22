@@ -1,0 +1,38 @@
+{
+ "exit": 1,
+ "console": [
+  "\u001b[1mSlack Log Bot セットアップ\u001b[0m",
+  "",
+  "\u001b[1m[1/4] Slack トークンの確認\u001b[0m",
+  "  \u001b[32m✓\u001b[0m Socket Mode 用 App-Level Token を確認",
+  "  \u001b[32m✓\u001b[0m 接続成功: Acme / bot=logbot",
+  "  \u001b[32m✓\u001b[0m 必要なスコープ 9 個すべてを確認",
+  "",
+  "\u001b[1m[2/4] Google の認証\u001b[0m",
+  "  \u001b[33m!\u001b[0m drive_token.json の有効期限が切れており、更新もできません。",
+  "    認証をやり直します。",
+  "  client_secret.json がありません。以下の手順で取得してください:",
+  "    1. https://console.cloud.google.com/ でプロジェクトを作成",
+  "    2. Google Sheets API と Google Drive API を有効化",
+  "    3. APIとサービス → 認証情報 → OAuth クライアントID",
+  "       アプリケーションの種類: デスクトップアプリ",
+  "    4. JSON をダウンロードし、client_secret.json としてこのディレクトリに配置",
+  "[stderr]   \u001b[31m✗\u001b[0m client_secret.json を配置してから再実行してください。"
+ ],
+ "env_files": {".env": "SLACK_APP_TOKEN=xapp-1-A111-222-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nSLACK_BOT_TOKEN=xoxb-111-222-bbbbbbbbbbbbbbbbbbbbbbbb\n"},
+ "slack_reads": [
+  {"call": "apps.connections.open", "app_token": "xapp-1-A111-222-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+  {"call": "auth.test", "token": "xoxb-111-222-bbbbbbbbbbbbbbbbbbbbbbbb"},
+  {"call": "conversations.list", "types": "public_channel,private_channel", "cursor": null},
+  {"call": "conversations.list", "types": "public_channel,private_channel", "cursor": "2"}
+ ],
+ "google_auth": [
+  {"call": "load_credentials"}
+ ],
+ "drive": [
+ ],
+ "sheets": [
+ ],
+ "logs": [
+ ]
+}
