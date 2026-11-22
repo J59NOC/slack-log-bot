@@ -155,10 +155,6 @@ def run_backfill(
 
 def weekly_main(argv: list[str] | None = None) -> None:
     """週次収集の入口（python collect_weekly.py）。"""
-    # A container's filesystem is read-only to the bot and its stdout is already
-    # kept by Docker, so the log file can be turned off with COLLECT_WEEKLY_LOG="".
-    configure_logging(os.environ.get("COLLECT_WEEKLY_LOG", "collect_weekly.log"))
-
     parser = argparse.ArgumentParser(description="Weekly Slack message collection")
     parser.add_argument("--channel", type=str, help="Channel name (default: all)")
     parser.add_argument(
@@ -177,8 +173,15 @@ def weekly_main(argv: list[str] | None = None) -> None:
     if args.channel and args.public:
         parser.error("--channel and --public cannot be used together")
 
+    # 設定（.env）を読んでからログの出力先を決める。COLLECT_WEEKLY_LOG は
+    # プロファイルの .env にも書けるので、先に決めるとそれが効かない。
+    settings = load_settings()
+    # A container's filesystem is read-only to the bot and its stdout is already
+    # kept by Docker, so the log file can be turned off with COLLECT_WEEKLY_LOG="".
+    configure_logging(os.environ.get("COLLECT_WEEKLY_LOG", "collect_weekly.log"))
+
     run_weekly(
-        services_for_cli(load_settings()),
+        services_for_cli(settings),
         channel_filter=args.channel,
         days=args.days,
         public_only=args.public,
