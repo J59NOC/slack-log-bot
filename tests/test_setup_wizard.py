@@ -309,7 +309,7 @@ SCENARIOS: dict[str, Scenario] = {
             w.google,
             "token_error",
             "drive_token.json の有効期限が切れており、更新もできません。\n"
-            "  python setup.py を実行して認証をやり直してください。",
+            "  uv run setup.py を実行して認証をやり直してください。",
         ),
     ),
     "eof_at_prompt": Scenario(),

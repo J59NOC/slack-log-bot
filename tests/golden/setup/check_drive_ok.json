@@ -11,7 +11,7 @@
   "",
   "\u001b[1;32mすべて通りました\u001b[0m",
   "  このフォルダを保存先にするには、続けて次を実行してください。",
-  "    python setup.py --profile <名前> --parent parentfolder00000000000000",
+  "    uv run setup.py --profile <名前> --parent parentfolder00000000000000",
   "",
   "  （このチェックは何も書き換えていません。作ったものは全部消しました）"
  ],

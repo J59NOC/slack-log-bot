@@ -476,7 +476,7 @@ def _open_target(target: str) -> tuple[Credentials, DriveService, str]:
         creds = auth.load_credentials()
     except Exception as e:
         fail(
-            f"Google の認証がまだです（{e}）\n  先に `python setup.py` の Step 2 を通してください。"
+            f"Google の認証がまだです（{e}）\n  先に `uv run setup.py` の Step 2 を通してください。"
         )
     drive = drive_service(creds)
 
@@ -585,7 +585,7 @@ def check_drive(target: str) -> bool:
 
     print("\033[1;32mすべて通りました\033[0m")
     print("  このフォルダを保存先にするには、続けて次を実行してください。")
-    print(f"    python setup.py --profile <名前> --parent {folder_id}")
+    print(f"    uv run setup.py --profile <名前> --parent {folder_id}")
     print()
     print("  （このチェックは何も書き換えていません。作ったものは全部消しました）")
     return True
@@ -655,8 +655,8 @@ def main(argv: list[str] | None = None) -> None:
     verify(env_file, env)
 
     print("\n\033[1;32mセットアップ完了\033[0m\n")
-    print("  過去ログの取り込み:  python backfill.py --days 7")
-    print("  リアルタイム収集:    python main.py")
+    print("  過去ログの取り込み:  uv run backfill.py --days 7")
+    print("  リアルタイム収集:    uv run main.py")
     print()
     print("\033[33m注意:\033[0m ユーザーの種類が「外部」で公開ステータスが「テスト中」だと、")
     print("  Google の仕様でリフレッシュトークンが7日で失効します。継続運用する場合は")

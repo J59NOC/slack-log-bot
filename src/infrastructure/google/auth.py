@@ -76,7 +76,7 @@ def load_credentials(required_scopes: list[str] | None = None) -> Credentials:
     if not Path(path).exists():
         msg = (
             f"Google の認証ファイル {path} がありません。\n"
-            f"  python setup.py を実行してセットアップしてください。"
+            f"  uv run setup.py を実行してセットアップしてください。"
         )
         raise CredentialsError(msg)
 
@@ -84,7 +84,7 @@ def load_credentials(required_scopes: list[str] | None = None) -> Credentials:
         with Path(path).open(encoding="utf-8") as f:
             stored = json.load(f)
     except (OSError, json.JSONDecodeError) as e:
-        msg = f"{path} を読み込めません: {e}\n  python setup.py で作り直してください。"
+        msg = f"{path} を読み込めません: {e}\n  uv run setup.py で作り直してください。"
         raise CredentialsError(msg) from e
 
     granted = set(stored.get("scopes") or [])
@@ -94,7 +94,7 @@ def load_credentials(required_scopes: list[str] | None = None) -> Credentials:
         # only carry the Drive scope, so they have to be re-consented.
         msg = (
             f"{path} に必要な権限がありません: {', '.join(missing)}\n"
-            f"  python setup.py を実行して認証をやり直してください。"
+            f"  uv run setup.py を実行して認証をやり直してください。"
         )
         raise CredentialsError(msg)
 
@@ -104,7 +104,7 @@ def load_credentials(required_scopes: list[str] | None = None) -> Credentials:
         if not creds.refresh_token:
             msg = (
                 f"{path} の有効期限が切れており、更新もできません。\n"
-                f"  python setup.py を実行して認証をやり直してください。"
+                f"  uv run setup.py を実行して認証をやり直してください。"
             )
             raise CredentialsError(msg)
         try:
@@ -113,7 +113,7 @@ def load_credentials(required_scopes: list[str] | None = None) -> Credentials:
             msg = (
                 f"Google 認証トークンの更新に失敗しました: {e}\n"
                 f"  OAuth同意画面が「テスト中」のままだとトークンは7日で失効します。\n"
-                f"  python setup.py で再認証するか、同意画面を「本番環境」に切り替えてください。"
+                f"  uv run setup.py で再認証するか、同意画面を「本番環境」に切り替えてください。"
             )
             raise CredentialsError(msg) from e
         save_token(creds, path)

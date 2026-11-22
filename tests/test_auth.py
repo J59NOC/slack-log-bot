@@ -54,14 +54,14 @@ class LoadCredentialsTests(unittest.TestCase):
         self.assertEqual(
             self._message(),
             f"Google の認証ファイル {self.path} がありません。\n"
-            f"  python setup.py を実行してセットアップしてください。",
+            f"  uv run setup.py を実行してセットアップしてください。",
         )
 
     def test_unreadable_file(self) -> None:
         self.path.write_text("{not json")
         message = self._message()
         self.assertTrue(message.startswith(f"{self.path} を読み込めません: "), message)
-        self.assertTrue(message.endswith("\n  python setup.py で作り直してください。"), message)
+        self.assertTrue(message.endswith("\n  uv run setup.py で作り直してください。"), message)
 
     def test_missing_scope(self) -> None:
         self._store(scopes=["https://www.googleapis.com/auth/drive"])
@@ -69,7 +69,7 @@ class LoadCredentialsTests(unittest.TestCase):
             self._message(),
             f"{self.path} に必要な権限がありません: "
             f"https://www.googleapis.com/auth/spreadsheets\n"
-            f"  python setup.py を実行して認証をやり直してください。",
+            f"  uv run setup.py を実行して認証をやり直してください。",
         )
 
     def test_expired_without_refresh_token(self) -> None:
@@ -77,7 +77,7 @@ class LoadCredentialsTests(unittest.TestCase):
         self.assertEqual(
             self._message(),
             f"{self.path} の有効期限が切れており、更新もできません。\n"
-            f"  python setup.py を実行して認証をやり直してください。",
+            f"  uv run setup.py を実行して認証をやり直してください。",
         )
 
     def test_refresh_failure(self) -> None:
@@ -90,7 +90,7 @@ class LoadCredentialsTests(unittest.TestCase):
             message,
             "Google 認証トークンの更新に失敗しました: invalid_grant\n"
             "  OAuth同意画面が「テスト中」のままだとトークンは7日で失効します。\n"
-            "  python setup.py で再認証するか、同意画面を「本番環境」に切り替えてください。",
+            "  uv run setup.py で再認証するか、同意画面を「本番環境」に切り替えてください。",
         )
 
 

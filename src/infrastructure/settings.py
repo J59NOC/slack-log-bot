@@ -82,9 +82,9 @@ def apply_profile(name: str) -> Path:
 def setup_hint(profile: str) -> str:
     """設定が足りないときに案内する、セットアップのコマンド。"""
     return (
-        f"`python setup.py --profile {profile}` を実行するとセットアップできます。"
+        f"`uv run setup.py --profile {profile}` を実行するとセットアップできます。"
         if profile
-        else "`python setup.py` を実行するとセットアップできます。"
+        else "`uv run setup.py` を実行するとセットアップできます。"
     )
 
 
@@ -108,7 +108,7 @@ def load_settings() -> Settings:
     if profile and not directory.is_dir():
         msg = (
             f"[設定エラー] プロファイル '{profile}' が見つかりません（{directory}）。\n"
-            f"  `python setup.py --profile {profile}` を実行すると作成できます。"
+            f"  `uv run setup.py --profile {profile}` を実行すると作成できます。"
         )
         raise SystemExit(msg)
 
