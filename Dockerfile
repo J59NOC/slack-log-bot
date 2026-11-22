@@ -1,7 +1,7 @@
 # Slack Log Bot
 #
 # 認証情報はイメージに入れず、実行時に profiles/ をマウントして渡す。
-# 使い方は README の「Docker で動かす」を参照。
+# 使い方は docs/running.md の「Docker で動かす」を参照。
 
 FROM python:3.13-slim
 
