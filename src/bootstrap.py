@@ -52,8 +52,8 @@ class GoogleClients:
 
     sheets: gspread.Client
     # Drive のクライアントは使う側ごとに分ける。googleapiclient の通信（httplib2）は
-    # スレッドセーフではなく、添付ファイルはバックグラウンドのスレッドから
-    # 上げる一方、ログ側の Drive 呼び出しは書き込みのロックの中で走るため。
+    # スレッドセーフではないので、それぞれが自分のロックの中でだけ使う
+    # （ログ側は書き込みのロック、添付側は DriveAttachmentStore のロック）。
     log_drive: DriveService
     attachment_drive: DriveService
 

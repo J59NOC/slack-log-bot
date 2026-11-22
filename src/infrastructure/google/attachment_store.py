@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import logging
+import threading
 from typing import TYPE_CHECKING
 
 from googleapiclient.http import MediaIoBaseUpload
@@ -89,6 +90,11 @@ class DriveAttachmentStore:
         self.service = service
         self.root_folder_id = root_folder_id
         self.shared_drive_id = drive_id
+        # googleapiclient の通信（httplib2）はスレッドセーフではない。添付は
+        # メッセージごとのスレッドから上げ、削除・共有・改名はイベントのスレッドから
+        # 呼ばれるので、この Drive クライアントへの呼び出しはすべてここで 1 本にする。
+        # フォルダを探してから作るまでの間に、別スレッドが同じフォルダを作るのも防ぐ。
+        self._lock = threading.RLock()
         # Cache: channel_name -> folder_id
         self._channel_folders: dict[str, str] = {}
         self._attachments_root: str | None = None
@@ -191,13 +197,14 @@ class DriveAttachmentStore:
 
     def rename_channel(self, channel: Channel) -> bool:
         """Follow a channel rename so uploads keep landing in the same folder."""
-        found = self._find_channel_folder_anywhere(channel.id)
-        if not found:
-            return False
-        if found["name"] != f"#{channel.name}":
-            self._stamp_channel_id(found["id"], channel.id, f"#{channel.name}")
-        self._channel_folders.clear()
-        return True
+        with self._lock:
+            found = self._find_channel_folder_anywhere(channel.id)
+            if not found:
+                return False
+            if found["name"] != f"#{channel.name}":
+                self._stamp_channel_id(found["id"], channel.id, f"#{channel.name}")
+            self._channel_folders.clear()
+            return True
 
     def _get_or_create_channel_folder(
         self,
@@ -276,10 +283,11 @@ class DriveAttachmentStore:
         revoke: list[str] | None = None,
     ) -> AccessChange:
         """Match the channel folder's readers to the channel's membership."""
-        folder_id = self._get_or_create_channel_folder(channel, member_emails)
-        if self.shared_drive_id and not channel.is_private:
-            return AccessChange(0, 0)
-        return AccessChange(*sync_permissions(self.service, folder_id, member_emails, revoke))
+        with self._lock:
+            folder_id = self._get_or_create_channel_folder(channel, member_emails)
+            if self.shared_drive_id and not channel.is_private:
+                return AccessChange(0, 0)
+            return AccessChange(*sync_permissions(self.service, folder_id, member_emails, revoke))
 
     def upload(
         self,
@@ -294,18 +302,19 @@ class DriveAttachmentStore:
         The name travels with the link so the sheet can show the filename with
         the URL behind it.
         """
-        folder_id = self._get_or_create_channel_folder(channel, member_emails)
+        with self._lock:
+            folder_id = self._get_or_create_channel_folder(channel, member_emails)
 
-        file_metadata = {
-            "name": file_name,
-            "parents": [folder_id],
-        }
-        media = MediaIoBaseUpload(io.BytesIO(content), mimetype=mime_type, resumable=False)
-        uploaded = (
-            self.service.files()
-            .create(body=file_metadata, media_body=media, fields="id,webViewLink")
-            .execute()
-        )
+            file_metadata = {
+                "name": file_name,
+                "parents": [folder_id],
+            }
+            media = MediaIoBaseUpload(io.BytesIO(content), mimetype=mime_type, resumable=False)
+            uploaded = (
+                self.service.files()
+                .create(body=file_metadata, media_body=media, fields="id,webViewLink")
+                .execute()
+            )
 
         # The parent folder's permissions already cover the file; sharing it
         # again would double the Drive calls for no added access.
@@ -321,8 +330,9 @@ class DriveAttachmentStore:
         The trash rather than a deletion, so one made in error is still
         recoverable for a while.
         """
-        for file_id in file_ids:
-            self._trash_one(file_id)
+        with self._lock:
+            for file_id in file_ids:
+                self._trash_one(file_id)
 
     def _trash_one(self, file_id: str) -> None:
         try:
