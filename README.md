@@ -976,6 +976,19 @@ SLACK_LOG_INTEGRATION=1 uv run python -m unittest \
 
 ---
 
+## コードの検査と整形
+
+[Ruff](https://docs.astral.sh/ruff/) で lint と整形をしています。設定は `pyproject.toml` の `[tool.ruff]` にあります。
+Ruff は開発用の依存なので `uv sync` で入ります（Docker イメージには入りません）。
+
+```bash
+uv run ruff check .          # lint
+uv run ruff check --fix .    # 自動で直せるものを直す
+uv run ruff format .         # 整形
+```
+
+---
+
 ## ライセンス
 
 MIT（[LICENSE](LICENSE)）

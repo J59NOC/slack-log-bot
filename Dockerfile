@@ -20,7 +20,7 @@ WORKDIR /app
 
 # 依存だけ先に入れて、コード変更時にキャッシュを効かせる
 COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen --no-install-project
+RUN uv sync --frozen --no-install-project --no-dev
 
 COPY *.py slack-app-manifest.yml ./
 COPY src ./src
