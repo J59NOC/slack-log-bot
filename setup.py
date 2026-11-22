@@ -154,7 +154,11 @@ def write_env(values: dict[str, str]):
 
     source = ENV_FILE if os.path.exists(ENV_FILE) else ENV_EXAMPLE
     if os.path.exists(source):
-        for raw in open(source).read().splitlines():
+        # UTF-8 を明示する。既定の文字コードに任せると、Windows（cp932）では
+        # .env.example の日本語コメントが読めず UnicodeDecodeError で止まる。
+        with open(source, encoding="utf-8") as f:
+            raw_lines = f.read().splitlines()
+        for raw in raw_lines:
             match = re.match(r"^([A-Z_][A-Z0-9_]*)=", raw)
             if match and match.group(1) in values:
                 key = match.group(1)
@@ -167,7 +171,7 @@ def write_env(values: dict[str, str]):
         if key not in seen:
             lines.append(f"{key}={value}")
 
-    with open(ENV_FILE, "w") as f:
+    with open(ENV_FILE, "w", encoding="utf-8") as f:
         f.write("\n".join(lines).rstrip() + "\n")
     os.chmod(ENV_FILE, 0o600)
 
