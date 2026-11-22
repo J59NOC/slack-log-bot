@@ -60,9 +60,10 @@ slack_log_bot/
 │   ├── presentation/     # Slackイベントのハンドラ・メンションコマンド・CLI
 │   │   └── setup/        # セットアップウィザードの画面と流れ
 │   └── bootstrap.py      # 部品の組み立て
+├── scripts/              # 保守用スクリプト（uv run python -m scripts.<名前> で実行）
+│   ├── cleanup_duplicate_files.py    # 重複した添付ファイルの掃除
+│   └── relink_attachments.py         # 既存の添付セルをファイル名リンクに変換
 ├── tests/                # 単体テストとシナリオテスト（golden/ に API 呼び出しと画面出力の記録）
-├── cleanup_duplicate_files.py    # 重複した添付ファイルの掃除
-├── relink_attachments.py         # 既存の添付セルをファイル名リンクに変換
 ├── setup.py              # セットアップウィザード（対話式）の入口
 ├── slack-app-manifest.yml # Slack Appマニフェスト（貼るだけでApp設定完了）
 ├── requirements.txt      # Python依存パッケージ
@@ -79,6 +80,15 @@ slack_log_bot/
 `src/` の依存は外側から内側への一方向です（presentation → application → domain ← infrastructure）。
 domain は他のレイヤーを import せず、Google や Slack の都合は infrastructure の中に閉じています。
 どの実装を組み合わせるかは `src/bootstrap.py` だけが知っています。
+
+ルートの `main.py`・`collect_weekly.py`・`backfill.py`・`setup.py` は起動用の入口で、中身は `src/` にあります。
+`scripts/` の保守用スクリプトは bot の動作には関わらず、必要なときに手元から実行します（Docker イメージには含めていません）。
+どれも既定では対象を表示するだけで、`--apply` を付けたときだけ書き換えます。
+
+```bash
+uv run python -m scripts.relink_attachments            # 対象を表示するだけ
+uv run python -m scripts.relink_attachments --apply    # 実際に書き換える
+```
 
 ## Slackコマンド
 

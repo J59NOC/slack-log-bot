@@ -1,6 +1,8 @@
 """レイヤー間の依存の向きと、入口・設定まわりの約束事のテスト。"""
 
 import ast
+import subprocess
+import sys
 import unittest
 from pathlib import Path
 
@@ -63,6 +65,55 @@ class SettingsTests(unittest.TestCase):
         # 「SLACK_BOT_TOKEN が設定されていません」で止まる。
         self.assertTrue((BASE_DIR / "pyproject.toml").exists())
         self.assertTrue((BASE_DIR / "main.py").exists())
+
+
+ROOT = SRC.parent
+
+# 起動方法ごとに --help まで動かす。import の壊れはここで分かる
+_ENTRY_POINT_CHECK = r"""
+import os, runpy, sys
+os.environ["COLLECT_WEEKLY_LOG"] = ""   # ログファイルを作らない
+targets = [
+    ("path", "setup.py"), ("path", "collect_weekly.py"), ("path", "backfill.py"),
+    ("path", "setup_drive_auth.py"),
+    ("module", "scripts.cleanup_duplicate_files"), ("module", "scripts.relink_attachments"),
+    ("path", "scripts/relink_attachments.py"),
+]
+for kind, target in targets:
+    sys.argv = [target, "--help"]
+    if target == "setup_drive_auth.py":
+        runpy.run_path(target, run_name="not_main")   # --help を持たない。import だけ確かめる
+        print("ok", target)
+        continue
+    try:
+        if kind == "module":
+            runpy.run_module(target, run_name="__main__", alter_sys=True)
+        else:
+            runpy.run_path(target, run_name="__main__")
+    except SystemExit as e:
+        assert e.code in (0, None), (target, e.code)
+    print("ok", target)
+import main   # 起動すると bot が動き出すので import だけ
+print("ok main.py")
+"""
+
+
+class EntryPointTests(unittest.TestCase):
+    def test_entry_points_and_scripts_start(self) -> None:
+        # 自分自身の Python で、このファイルに書いた決まったスクリプトを動かすだけ
+        result = subprocess.run(  # noqa: S603
+            [sys.executable, "-c", _ENTRY_POINT_CHECK],
+            check=False,
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=120,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr[-3000:])
+        self.assertEqual(
+            result.stdout.count("\nok ") + result.stdout.startswith("ok "), 8, result.stdout
+        )
 
 
 class MentionCommandTests(unittest.TestCase):
