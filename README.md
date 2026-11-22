@@ -75,7 +75,7 @@ Slack無料プランではメッセージ履歴が一定期間で消えてしま
 | [docs/storage.md](docs/storage.md) | 保存先の構成と共有（Drive のフォルダ、共有の自動同期、共有ドライブ、スプレッドシートの列と書式） |
 | [docs/multiple-bots.md](docs/multiple-bots.md) | 複数の bot を動かす・別々のワークスペースで使う |
 | [docs/troubleshooting.md](docs/troubleshooting.md) | トラブルシューティング |
-| [docs/development.md](docs/development.md) | 開発者向け（プロジェクト構成、保守スクリプト、テスト、Ruff） |
+| [docs/development.md](docs/development.md) | 開発者向け（プロジェクト構成、保守スクリプト、テスト、Ruff、CI） |
 | [docs/github-pages.md](docs/github-pages.md) | Google OAuth 用のホームページとプライバシーポリシーの公開 |
 | [deploy/raspi/README.md](deploy/raspi/README.md) | Raspberry Pi（Ubuntu Server）への cloud-init デプロイ |
 

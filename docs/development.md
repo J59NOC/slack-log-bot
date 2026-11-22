@@ -26,7 +26,7 @@ slack-log-bot/
 ├── tests/                # 単体テストとシナリオテスト（golden/ に API 呼び出しと画面出力の記録）
 ├── docs/                 # ドキュメントと README の画像
 ├── privacy-policy/       # Google OAuth 用のホームページとプライバシーポリシー（GitHub Pages で公開）
-├── .github/workflows/    # privacy-policy/ を GitHub Pages に公開する workflow
+├── .github/workflows/    # CI（ci.yml）と、privacy-policy/ を GitHub Pages に公開する workflow（pages.yml）
 ├── slack-app-manifest.yml # Slack Appマニフェスト（貼るだけでApp設定完了）
 ├── pyproject.toml        # プロジェクト設定・依存パッケージ・Ruff の設定
 ├── uv.lock               # 依存パッケージのバージョン固定（uv）
@@ -99,3 +99,34 @@ uv run ruff check .          # lint
 uv run ruff check --fix .    # 自動で直せるものを直す
 uv run ruff format .         # 整形
 ```
+
+## CI
+
+GitHub Actions（`.github/workflows/ci.yml`）が、pull request と `main` への push のたびに次を実行します。
+Actions の画面から手動で実行することもできます（`workflow_dispatch`）。
+
+ただし、どのジョブも読まないファイル（Markdown、`docs/`、`privacy-policy/`、`deploy/`、`compose.yaml`、`LICENSE`、
+`pages.yml`）だけを変えたときは実行しません。除外する側を `paths-ignore` に並べているので、
+それ以外のファイルを足したときは何もしなくても CI の対象になります。
+CI が読むようになったファイルは、`paths-ignore` から外してください。
+
+| ジョブ | 内容 |
+|--------|------|
+| Ruff | `ruff check` と `ruff format --diff`（整形が必要な箇所があれば差分を出して失敗） |
+| Test | Python 3.10・3.13・3.14 でテストを実行（3.10 は対応する下限、3.13 は Docker イメージと同じ版） |
+| Docker image | イメージをビルドし、その中で各入口（`main.py` など）を import できるか確かめる |
+
+依存は `uv sync --locked` で入れるため、`pyproject.toml` を変えて `uv.lock` を更新し忘れると失敗します。
+`uv lock` を実行して、`uv.lock` も一緒にコミットしてください。
+CI で使う uv の版は workflow の `UV_VERSION` で固定しています。手元の uv を上げたときは、合わせて上げてください。
+
+push する前に手元で同じ確認をするには、次を実行します。
+
+```bash
+uv sync --locked
+uv run ruff check .
+uv run ruff format --diff .
+uv run python -m unittest discover -s tests
+```
+
+共有ドライブを使う統合テスト（`SLACK_LOG_INTEGRATION=1`）は Google の認証情報が必要なため、CI ではスキップされます。

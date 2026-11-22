@@ -1,0 +1,101 @@
+name: CI
+
+# どのジョブも読まないファイルだけの変更では走らせない。
+# 対象を列挙する paths ではなく除外を列挙する paths-ignore にしているのは、
+# テストが読む .env.example のように、CI に効くファイルを入れ忘れて
+# 確かめないまま通してしまうのを防ぐため。
+on:
+  push:
+    branches:
+      - main
+    paths-ignore: &paths-ignore
+      - "**.md"
+      - "docs/**"
+      - "privacy-policy/**"
+      - "deploy/**"
+      - "compose.yaml"
+      - "LICENSE"
+      - ".github/workflows/pages.yml"
+  pull_request:
+    paths-ignore: *paths-ignore
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# PR に新しい push が来たら、古い実行は止める。
+# main は各コミットに結果を残すため、止めずに順に実行する。
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  # uv.lock の形式は uv の版で変わることがあるので、CI で使う uv も固定する
+  UV_VERSION: "0.13.6"
+
+jobs:
+  lint:
+    name: Ruff
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v10
+        with:
+          version: ${{ env.UV_VERSION }}
+
+      # --locked: pyproject.toml を変えて uv.lock を更新し忘れていたら落とす
+      - name: Install dependencies
+        run: uv sync --locked
+
+      - name: Lint
+        run: uv run ruff check --output-format=github .
+
+      - name: Check formatting
+        run: uv run ruff format --diff .
+
+  test:
+    name: Test (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        # 3.10: requires-python の下限 / 3.13: Docker イメージと同じ / 3.14: 最新
+        python-version: ["3.10", "3.13", "3.14"]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v10
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: uv sync --locked
+
+      # 実 API を使う統合テスト（SLACK_LOG_INTEGRATION=1）はスキップされる
+      - name: Run tests
+        run: uv run python -m unittest discover -s tests -v
+
+  docker:
+    name: Docker image
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Build image
+        run: docker build -t slack-log-bot:ci .
+
+      # イメージに入れたコードと依存だけで、各入口を読み込めるか確かめる
+      - name: Import entry points
+        run: >-
+          docker run --rm slack-log-bot:ci
+          python -c "import main, collect_weekly, backfill, setup"
