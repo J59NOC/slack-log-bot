@@ -57,11 +57,19 @@ def describe(drive: DriveService, file_id: str, fields: str) -> dict:
     return drive.files().get(fileId=file_id, fields=fields).execute()
 
 
+def _quoted(value: str) -> str:
+    r"""Drive の検索式（q）に入れる文字列の \ と ' をエスケープする。
+
+    ワークスペース名は "Bob's Team" のように ' を含みうる。
+    """
+    return value.replace("\\", "\\\\").replace("'", "\\'")
+
+
 def find_or_create(
     drive: DriveService, name: str, mime_type: str, parent: str | None = None
 ) -> tuple[str, bool]:
     """Return (file_id, created). Reuses an existing item with the same name."""
-    query = f"name = '{name}' and mimeType = '{mime_type}' and trashed = false"
+    query = f"name = '{_quoted(name)}' and mimeType = '{mime_type}' and trashed = false"
     if parent:
         query += f" and '{parent}' in parents"
     found = drive.files().list(q=query, fields="files(id, name)", pageSize=1).execute()

@@ -48,8 +48,10 @@ class SlackBotIdentity:
             try:
                 self._user_ids = (self.client.auth_test().get("user_id", ""),)
             except Exception as e:
+                # Not remembered: an empty answer kept for the life of the
+                # process would let every later post of the bot's into the log.
                 logger.warning("Could not resolve the bot's own user id: %s", e)
-                self._user_ids = ()
+                return ()
         return self._user_ids
 
     def fetch_user_ids(self) -> tuple[str, ...]:

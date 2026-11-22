@@ -73,6 +73,10 @@ class SlackWorkspace:
         """チャンネルの名前。"""
         return self.channel(channel_id).name
 
+    def cached_channel(self, channel_id: str) -> Channel | None:
+        """キャッシュにある（＝改名前の）チャンネル情報。問い合わせはしない。"""
+        return self._channels.get(channel_id)
+
     def forget_channel(self, channel_id: str) -> None:
         """Drop the cached name so a rename is picked up without a restart."""
         self._channels.pop(channel_id, None)

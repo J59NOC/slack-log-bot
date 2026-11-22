@@ -46,6 +46,9 @@ class Workspace:
     def channel_name_of(self, channel_id: str) -> str:
         return self.channel(channel_id).name
 
+    def cached_channel(self, channel_id: str) -> Channel | None:
+        return self.channels.get(channel_id)
+
     def forget_channel(self, channel_id: str) -> None:
         pass
 

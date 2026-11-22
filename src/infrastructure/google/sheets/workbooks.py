@@ -198,8 +198,15 @@ class ChannelWorkbooks:
             return AccessChange(0, 0)
         granted = revoked = 0
         if not self.shared_drive_id:
+            # public channel のタブはすべて同じ索引スプレッドシートにある。1 つの
+            # チャンネルを抜けただけで外すと、まだ参加している他の public channel の
+            # ログも見られなくなるので、索引からは外さない（付与だけ揃える）。
             granted, revoked = sync_permissions(
-                self._drive, ss.id, member_emails, revoke, role="writer"
+                self._drive,
+                ss.id,
+                member_emails,
+                revoke if channel.is_private else None,
+                role="writer",
             )
         if channel.is_private:
             folder_id = self.private_folder_for(channel, member_emails)
@@ -391,7 +398,7 @@ class ChannelWorkbooks:
             is_new = True
 
         if is_new or channel_name not in self._formatted_sheets:
-            apply_sheet_format(worksheet, ss)
+            apply_sheet_format(worksheet, ss, new_sheet=is_new)
             self._formatted_sheets.add(channel_name)
 
         # 索引は公開チャンネルだけ。プライベートチャンネルの名前と URL を
@@ -462,7 +469,9 @@ class ChannelWorkbooks:
     ) -> Iterator[tuple[gspread.Spreadsheet, gspread.Worksheet]]:
         """スプレッドシートを開き、ログ以外の bot のタブを除いて返す。開けなければ何も返さない。"""
         try:
-            spreadsheet = open_spreadsheet()
+            # Opening reads the spreadsheet, and a rate limit here would leave
+            # this spreadsheet out of a rename across every channel.
+            spreadsheet = retry(open_spreadsheet)
             worksheets = retry(spreadsheet.worksheets)
         except Exception as e:
             logger.warning("Could not open %s: %s", name, e)
@@ -491,6 +500,14 @@ class ChannelWorkbooks:
             logger.warning("Could not rename public channel tab: %s", e)
             return False
         self.forget()
+        # 索引の行も新しい名前に付け替える。残すと、同じタブが旧名と新名の 2 行で載る
+        url = self._index_entries.pop(previous_name, None)
+        if url:
+            self._index_entries[new_name] = url
+            try:
+                write_channel_index(self.index_spreadsheet, self.index_entries())
+            except Exception as e:
+                logger.warning("Could not refresh the channel index: %s", e)
         logger.info("Renamed public channel tab to #%s", new_name)
         return True
 
@@ -533,12 +550,9 @@ class ChannelWorkbooks:
         except Exception as e:
             logger.warning("Could not rename the tab for %s: %s", new_name, e)
         # Caches are keyed by channel name, so the old key must go.
+        # 索引には public channel しか載っていないので、ここで消して書き直すと
+        # 他の public channel の行まで消える。索引には手を付けない。
         self.forget()
-        self._index_entries.clear()
-        try:
-            write_channel_index(self.index_spreadsheet, self.index_entries())
-        except Exception as e:
-            logger.warning("Could not refresh the channel index: %s", e)
         logger.info("Renamed the log spreadsheet to %s", new_title)
         return True
 

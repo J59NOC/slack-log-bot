@@ -29,6 +29,9 @@ class SlackWorkspace(Protocol):
     def channel_name_of(self, channel_id: str) -> str:
         """チャンネルの名前（本文中の <#C...> を名前にするのに使う）。"""
 
+    def cached_channel(self, channel_id: str) -> Channel | None:
+        """キャッシュにあるチャンネル情報。問い合わせはしない。"""
+
     def forget_channel(self, channel_id: str) -> None:
         """覚えているチャンネル情報を捨てる（改名の後で読み直すため）。"""
 

@@ -40,7 +40,16 @@ class RenameService:
         self._store = store
 
     def channel_renamed(self, channel_id: str, new_name: str, previous_name: str = "") -> bool:
-        """Keep the channel's spreadsheet and folder with it when it is renamed."""
+        """Keep the channel's spreadsheet and folder with it when it is renamed.
+
+        Slack の channel_rename / group_rename は新しい名前しか伝えてこない。
+        previous_name が無ければ、忘れる前のキャッシュにある名前を前の名前とする
+        （public channel のタブは名前でしか探せない）。
+        """
+        if not previous_name:
+            cached = self._workspace.cached_channel(channel_id)
+            if cached and cached.name != new_name:
+                previous_name = cached.name
         self._workspace.forget_channel(channel_id)
         channel = self._channels.known(channel_id, new_name)
         moved = False

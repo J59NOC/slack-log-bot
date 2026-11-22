@@ -42,8 +42,13 @@ logger = logging.getLogger(__name__)
 # ── シート全体 ──
 
 
-def sheet_format_requests(sheet_id: int, row_count: int) -> list[dict]:
-    """Visual formatting for a log worksheet (applied once on creation)."""
+def sheet_format_requests(sheet_id: int, row_count: int, *, new_sheet: bool = True) -> list[dict]:
+    """Visual formatting for a log worksheet (applied once on creation).
+
+    new_sheet が False（記録済みの行があるシート）のときは、データ行の高さを
+    揃えない。行ごとの高さはメッセージの長さに合わせて付けてあり、揃えると
+    複数行のメッセージがすべて 1 行に切り詰められる。
+    """
     requests = []
 
     # 1. Freeze header row
@@ -183,20 +188,21 @@ def sheet_format_requests(sheet_id: int, row_count: int) -> list[dict]:
     )
 
     # 8. Fixed height for data rows
-    requests.append(
-        {
-            "updateDimensionProperties": {
-                "range": {
-                    "sheetId": sheet_id,
-                    "dimension": "ROWS",
-                    "startIndex": 1,
-                    "endIndex": max(row_count, 2),
-                },
-                "properties": {"pixelSize": DATA_ROW_HEIGHT},
-                "fields": "pixelSize",
+    if new_sheet:
+        requests.append(
+            {
+                "updateDimensionProperties": {
+                    "range": {
+                        "sheetId": sheet_id,
+                        "dimension": "ROWS",
+                        "startIndex": 1,
+                        "endIndex": max(row_count, 2),
+                    },
+                    "properties": {"pixelSize": DATA_ROW_HEIGHT},
+                    "fields": "pixelSize",
+                }
             }
-        }
-    )
+        )
 
     # 9. Set basic filter (auto-filter) on header
     requests.append(
@@ -216,9 +222,15 @@ def sheet_format_requests(sheet_id: int, row_count: int) -> list[dict]:
     return requests
 
 
-def apply_sheet_format(worksheet: gspread.Worksheet, spreadsheet: gspread.Spreadsheet) -> None:
-    """Apply visual formatting to a worksheet (called once on creation)."""
-    requests = sheet_format_requests(worksheet.id, worksheet.row_count)
+def apply_sheet_format(
+    worksheet: gspread.Worksheet, spreadsheet: gspread.Spreadsheet, *, new_sheet: bool = True
+) -> None:
+    """Apply visual formatting to a worksheet (called once on creation).
+
+    プロセスを起動し直すたびに既存のシートにもかけ直すので、そのときは
+    new_sheet=False で、行ごとの高さを残す。
+    """
+    requests = sheet_format_requests(worksheet.id, worksheet.row_count, new_sheet=new_sheet)
     try:
         retry(spreadsheet.batch_update, {"requests": requests})
         logger.info("Applied formatting to sheet: %s", worksheet.title)

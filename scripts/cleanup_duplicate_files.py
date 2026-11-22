@@ -98,13 +98,22 @@ def linked_file_ids(gc: gspread.Client, drive: DriveService, root_folder_id: str
     return ids
 
 
+def _copy_key(f: dict) -> tuple[str, str | None]:
+    """同じファイルの複製とみなす目印: 名前と中身（md5、無ければサイズ）。
+
+    名前だけでは足りない。Slack に貼った画像はどれも image.png のような
+    同じ名前で届くので、名前だけで比べると別の画像を複製として捨ててしまう。
+    """
+    return f["name"], f.get("md5Checksum") or f.get("size")
+
+
 def removable_copies(files: list[dict], linked: set[str]) -> list[dict]:
-    """同じ名前のファイルのうち、消してよい複製。Google のファイルは対象にしない。"""
-    by_name: dict[str, list[dict]] = defaultdict(list)
+    """同じ名前・同じ中身のファイルのうち、消してよい複製。Google のファイルは対象にしない。"""
+    by_name: dict[tuple[str, str | None], list[dict]] = defaultdict(list)
     for f in files:
         if f.get("mimeType", "").startswith(GOOGLE_APPS_MIME_PREFIX):
             continue
-        by_name[f["name"]].append(f)
+        by_name[_copy_key(f)].append(f)
 
     removable: list[dict] = []
     for copies in by_name.values():
@@ -189,7 +198,7 @@ def main() -> int:
             drive.files()
             .list(
                 q=f"'{folder['id']}' in parents and trashed = false",
-                fields="files(id, name, mimeType, size, createdTime)",
+                fields="files(id, name, mimeType, size, md5Checksum, createdTime)",
                 orderBy="createdTime",
                 pageSize=1000,
             )

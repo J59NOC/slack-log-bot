@@ -159,7 +159,9 @@ class SheetsChannelLog:
 
     def url_for(self, channel: Channel) -> str | None:
         """チャンネルのログの URL。まだ無ければ None。"""
-        return self._books.url_for(channel)
+        # ログ側の Drive クライアントとキャッシュは、書き込みのロックの中でだけ使う
+        with self._lock:
+            return self._books.url_for(channel)
 
     def sync_access(
         self,
@@ -168,7 +170,10 @@ class SheetsChannelLog:
         revoke: list[str] | None = None,
     ) -> AccessChange:
         """ログの共有を、チャンネルのメンバーに揃える。"""
-        return self._books.sync_access(channel, member_emails, revoke)
+        # スプレッドシートを探して無ければ作るので、書き込みと同じロックの中で行う。
+        # 外で行うと、同時に届いた投稿と 2 つ目のスプレッドシートを作りうる。
+        with self._lock:
+            return self._books.sync_access(channel, member_emails, revoke)
 
     # ── 1 件ずつ書く（リアルタイム） ──
 
@@ -364,12 +369,19 @@ class SheetsChannelLog:
             existing.add(entry.ts)
 
         # Batch append; the response tells us exactly where the rows landed
-        resp = retry(
-            worksheet.append_rows,
-            rows,
-            value_input_option="RAW",
-            idempotent=False,
-        )
+        try:
+            resp = retry(
+                worksheet.append_rows,
+                rows,
+                value_input_option="RAW",
+                idempotent=False,
+            )
+        except Exception:
+            # The ts above were marked as recorded before the write. Forget them,
+            # so the next run reads the sheet again instead of skipping rows that
+            # were never written as duplicates.
+            self._existing_ts.pop(channel_name, None)
+            raise
         start_row = appended_row_number(resp)
 
         # Row heights and thread reply backgrounds
@@ -461,11 +473,13 @@ class SheetsChannelLog:
             wanted = text + (match.group(0) if match else "")
 
             try:
+                # RAW: update_cell は USER_ENTERED で書くので、"=..." や "+1" が
+                # 数式・数値として解釈されてしまう（他の書き込みはすべて RAW）
                 retry(
-                    worksheet.update_cell,
-                    row_number,
-                    MESSAGE_COLUMN,
-                    wanted,
+                    worksheet.update,
+                    [[wanted]],
+                    f"{column_letter(MESSAGE_COLUMN)}{row_number}",
+                    value_input_option="RAW",
                     idempotent=False,
                 )
                 retry(

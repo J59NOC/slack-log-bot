@@ -437,11 +437,10 @@ class FakeWorksheet:
 
     def update(self, values: list[list[str]], range_name: str | None = None, **kw: object) -> dict:
         self._log("update", values=values, range_name=range_name, **kw)
-        if range_name != "A1":
-            msg = f"このフェイクは A1 からの書き込みだけを扱う: {range_name}"
-            raise ValueError(msg)
-        for r, row in enumerate(values, start=1):
-            for c, value in enumerate(row, start=1):
+        # 書き込みの起点（左上のセル）。範囲（B2:C3）は扱わない
+        first_row, first_col = _a1_cell(range_name or "A1")
+        for r, row in enumerate(values, start=first_row):
+            for c, value in enumerate(row, start=first_col):
                 self.set_cell(r, c, str(value))
         return {}
 
